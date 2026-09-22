@@ -46,3 +46,5 @@ next-env.d.ts
 # auto-installed marketplace agent skills (vendored, reproducible via `vercel integration add`)
 /.agents
 /.claude
+
+.env*

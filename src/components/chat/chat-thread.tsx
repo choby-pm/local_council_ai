@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { useEffect, useState } from "react";
 import { SendHorizonal, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -9,21 +9,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AnswerUnavailable } from "@/components/chat/answer-unavailable";
 import { AssistantMessage, UserMessage } from "@/components/chat/messages";
 import { EmptyResult, ErrorState } from "@/components/chat/state-panels";
+import { renderWithCitations, type CitationSource } from "@/components/chat/render-citations";
+import { SourceList } from "@/components/chat/source-list";
 import type { TrustLevel } from "@/components/chat/trust-badge";
 
-export type ThreadTurn =
-  | { role: "user"; content: ReactNode }
-  | {
-      role: "assistant";
-      kind?: "normal";
-      trust?: TrustLevel;
-      content: ReactNode;
-      footer?: ReactNode;
-      saveable?: boolean;
-    }
-  | { role: "assistant"; kind: "unavailable"; relatedLinkLabel?: string }
-  | { role: "assistant"; kind: "empty" }
-  | { role: "assistant"; kind: "error" };
+export type DbMessage = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  trustLevel: TrustLevel | null;
+  kind: "normal" | "unavailable" | "empty" | "error";
+  sources: CitationSource[] | null;
+};
 
 function LoadingBubble() {
   return (
@@ -40,85 +37,133 @@ function LoadingBubble() {
   );
 }
 
-function TurnView({ turn }: { turn: ThreadTurn }) {
-  if (turn.role === "user") {
-    return <UserMessage>{turn.content}</UserMessage>;
+function MessageView({ message }: { message: DbMessage }) {
+  if (message.role === "user") {
+    return <UserMessage>{message.content}</UserMessage>;
   }
-  if (turn.kind === "unavailable") {
+  if (message.kind === "unavailable") {
     return (
-      <AssistantMessage trust="low">
-        <AnswerUnavailable relatedLinkLabel={turn.relatedLinkLabel} />
+      <AssistantMessage trust="low" messageId={message.id}>
+        <AnswerUnavailable />
       </AssistantMessage>
     );
   }
-  if (turn.kind === "empty") {
+  if (message.kind === "empty") {
     return (
-      <AssistantMessage className="max-w-full">
+      <AssistantMessage className="max-w-full" messageId={message.id}>
         <EmptyResult />
       </AssistantMessage>
     );
   }
-  if (turn.kind === "error") {
+  if (message.kind === "error") {
     return (
-      <AssistantMessage className="max-w-full">
+      <AssistantMessage className="max-w-full" messageId={message.id}>
         <ErrorState />
       </AssistantMessage>
     );
   }
   return (
-    <AssistantMessage trust={turn.trust} saveable={turn.saveable} footer={turn.footer}>
-      {turn.content}
+    <AssistantMessage
+      trust={message.trustLevel ?? undefined}
+      saveable
+      messageId={message.id}
+      footer={<SourceList sources={message.sources ?? []} />}
+    >
+      {renderWithCitations(message.content, message.sources ?? [])}
     </AssistantMessage>
   );
 }
 
 export function ChatThread({
-  seed,
+  menu,
+  conversationId,
+  initialMessages,
   placeholder,
-  onNewQuestion,
+  onConversationCreated,
+  autoSendQuestion,
 }: {
-  seed: ThreadTurn[];
+  menu: "laws" | "meetings" | "budget";
+  conversationId: string | null;
+  initialMessages: DbMessage[];
   placeholder: string;
-  onNewQuestion?: (question: string) => ThreadTurn | ThreadTurn[];
+  onConversationCreated?: (conv: { id: string; title: string; updatedAt: string }) => void;
+  autoSendQuestion?: string;
 }) {
-  const [turns, setTurns] = useState<ThreadTurn[]>(seed);
+  const [messages, setMessages] = useState<DbMessage[]>(initialMessages);
+  const [activeConversationId, setActiveConversationId] = useState(conversationId);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function handleSend() {
-    const text = draft.trim();
-    if (!text || loading) return;
-    setDraft("");
-    setTurns((prev) => [...prev, { role: "user", content: text }]);
+  async function handleSend(override?: string) {
+    const question = (override ?? draft).trim();
+    if (!question || loading) return;
+    if (!override) setDraft("");
+    setMessages((prev) => [
+      ...prev,
+      { id: `pending-${Date.now()}`, role: "user", content: question, trustLevel: null, kind: "normal", sources: null },
+    ]);
     setLoading(true);
-    window.setTimeout(() => {
+
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: activeConversationId, menu, question }),
+      });
+      if (!res.ok) throw new Error("request failed");
+      const data = await res.json();
+
+      if (!activeConversationId) {
+        setActiveConversationId(data.conversationId);
+        onConversationCreated?.({
+          id: data.conversationId,
+          title: question.slice(0, 40),
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      setMessages((prev) => {
+        const withoutPending = prev.filter((m) => !m.id.startsWith("pending-"));
+        return [
+          ...withoutPending,
+          { id: data.userMessage.id, role: "user", content: data.userMessage.content, trustLevel: null, kind: "normal", sources: null },
+          {
+            id: data.assistantMessage.id,
+            role: "assistant",
+            content: data.assistantMessage.content,
+            trustLevel: data.assistantMessage.trustLevel,
+            kind: data.assistantMessage.kind,
+            sources: data.assistantMessage.sources,
+          },
+        ];
+      });
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { id: `error-${Date.now()}`, role: "assistant", content: "", trustLevel: null, kind: "error", sources: null },
+      ]);
+    } finally {
       setLoading(false);
-      const reply = onNewQuestion?.(text) ?? {
-        role: "assistant" as const,
-        trust: "medium" as const,
-        saveable: true,
-        content: (
-          <>
-            &quot;{text}&quot;에 대한 관련 자료를 종합해 답변을 준비했습니다. (프레임 목업
-            단계이므로 실제 검색 결과 대신 예시 답변을 표시합니다.)
-          </>
-        ),
-      };
-      setTurns((prev) => [...prev, ...(Array.isArray(reply) ? reply : [reply])]);
-    }, 900);
+    }
   }
+
+  useEffect(() => {
+    // 마운트 시 1회만 — 대시보드 빠른 질문 등에서 넘어온 질문을 자동으로 전송
+    if (autoSendQuestion) queueMicrotask(() => handleSend(autoSendQuestion));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex-1 space-y-5 overflow-y-auto pr-1 pb-2">
-        {turns.length === 0 && (
+        {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-1 py-12 text-center text-muted-foreground">
             <Sparkles className="size-5" />
             <p className="text-sm">새 대화를 시작해보세요</p>
           </div>
         )}
-        {turns.map((turn, i) => (
-          <TurnView key={i} turn={turn} />
+        {messages.map((m) => (
+          <MessageView key={m.id} message={m} />
         ))}
         {loading && <LoadingBubble />}
       </div>
@@ -132,8 +177,9 @@ export function ChatThread({
           }}
           placeholder={placeholder}
           className="h-11"
+          disabled={loading}
         />
-        <Button size="icon" className="h-11 w-11 shrink-0" onClick={handleSend} disabled={loading}>
+        <Button size="icon" className="h-11 w-11 shrink-0" onClick={() => handleSend()} disabled={loading}>
           <SendHorizonal />
           <span className="sr-only">질문 보내기</span>
         </Button>

@@ -77,6 +77,7 @@ export function CompleteProfileForm() {
                 <SelectValue placeholder="소속 의회를 선택하세요" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="고양특례시의회">고양특례시의회 (시범 연동)</SelectItem>
                 <SelectItem value="OO광역시의회">OO광역시의회</SelectItem>
                 <SelectItem value="△△시의회">△△시의회</SelectItem>
                 <SelectItem value="□□군의회">□□군의회</SelectItem>

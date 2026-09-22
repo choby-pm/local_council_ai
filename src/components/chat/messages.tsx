@@ -25,12 +25,14 @@ export function AssistantMessage({
   footer,
   className,
   saveable,
+  messageId,
 }: {
   trust?: TrustLevel;
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
   saveable?: boolean;
+  messageId?: string;
 }) {
   return (
     <div className="flex gap-2">
@@ -44,7 +46,7 @@ export function AssistantMessage({
         </div>
         {footer}
         <div className="flex items-center justify-between">
-          <FeedbackButtons />
+          <FeedbackButtons messageId={messageId} />
           {saveable && (
             <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
               <Bookmark className="size-3.5" />

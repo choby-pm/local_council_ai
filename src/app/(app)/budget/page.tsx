@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { type ReactNode, useState } from "react";
+import { AlertTriangle, SendHorizonal } from "lucide-react";
 
+import { AnswerUnavailable } from "@/components/chat/answer-unavailable";
 import { BudgetChart } from "@/components/chat/budget-chart";
-import { ChatThread, type ThreadTurn } from "@/components/chat/chat-thread";
 import { ConversationList, type ConversationItem } from "@/components/chat/conversation-list";
+import { AssistantMessage, UserMessage } from "@/components/chat/messages";
+import { EmptyResult, ErrorState } from "@/components/chat/state-panels";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Table,
   TableBody,
@@ -17,6 +21,64 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
+// 예산·결산은 Phase 4에서 실 데이터 연동 예정 — 그 전까지는 예시 답변만 보여주는 목업
+type MockTurn =
+  | { role: "user"; content: string }
+  | { role: "assistant"; kind: "normal"; trust?: "high" | "medium" | "low"; saveable?: boolean; content: ReactNode }
+  | { role: "assistant"; kind: "empty" | "error" | "unavailable" };
+
+function MockTurnView({ turn }: { turn: MockTurn }) {
+  if (turn.role === "user") return <UserMessage>{turn.content}</UserMessage>;
+
+  switch (turn.kind) {
+    case "empty":
+      return <AssistantMessage className="max-w-full"><EmptyResult /></AssistantMessage>;
+    case "error":
+      return <AssistantMessage className="max-w-full"><ErrorState /></AssistantMessage>;
+    case "unavailable":
+      return <AssistantMessage trust="low"><AnswerUnavailable /></AssistantMessage>;
+    case "normal":
+      return (
+        <AssistantMessage trust={turn.trust} saveable={turn.saveable}>
+          {turn.content}
+        </AssistantMessage>
+      );
+  }
+}
+
+function MockThread({ seed, placeholder }: { seed: MockTurn[]; placeholder: string }) {
+  const [turns, setTurns] = useState(seed);
+  const [draft, setDraft] = useState("");
+
+  function handleSend() {
+    const text = draft.trim();
+    if (!text) return;
+    setDraft("");
+    setTurns((prev) => [
+      ...prev,
+      { role: "user", content: text },
+      { role: "assistant", kind: "unavailable" as const } as MockTurn,
+    ]);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex-1 space-y-5 overflow-y-auto pr-1 pb-2">
+        {turns.map((t, i) => (
+          <MockTurnView key={i} turn={t} />
+        ))}
+      </div>
+      <div className="flex gap-2 border-t pt-3">
+        <Input value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()} placeholder={placeholder} className="h-11" />
+        <Button size="icon" className="h-11 w-11 shrink-0" onClick={handleSend}>
+          <SendHorizonal />
+          <span className="sr-only">질문 보내기</span>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 const budgetRows = [
   { dept: "행정안전국", item: "재난안전 통신망 유지보수", prev: 820, curr: 1180, ratio: 44 },
   { dept: "복지환경국", item: "청년 주거 지원 사업", prev: 1500, curr: 1620, ratio: 8 },
@@ -24,9 +86,10 @@ const budgetRows = [
   { dept: "건설교통국", item: "노후 교량 정밀점검", prev: 340, curr: 690, ratio: 103 },
 ];
 
-function OutlierAnswer(): ThreadTurn {
+function OutlierAnswer(): MockTurn {
   return {
     role: "assistant",
+    kind: "normal",
     trust: "high",
     saveable: true,
     content: (
@@ -86,9 +149,10 @@ function OutlierAnswer(): ThreadTurn {
   };
 }
 
-function TrendAnswer(): ThreadTurn {
+function TrendAnswer(): MockTurn {
   return {
     role: "assistant",
+    kind: "normal",
     trust: "medium",
     saveable: true,
     content: (
@@ -109,7 +173,7 @@ const conversations: ConversationItem[] = [
   { id: "4", title: "예시: 일시적 오류", updatedAt: "09-10" },
 ];
 
-const seeds: Record<string, ThreadTurn[]> = {
+const seeds: Record<string, MockTurn[]> = {
   "1": [
     { role: "user", content: "2026년도 3회 추경에서 전년 대비 증감이 큰 사업 찾아줘" },
     OutlierAnswer(),
@@ -172,7 +236,7 @@ export default function BudgetPage() {
           onRename={conv.rename}
           onDelete={conv.remove}
         />
-        <ChatThread
+        <MockThread
           key={conv.activeId}
           seed={seeds[conv.activeId] ?? []}
           placeholder="예: 건설교통국 노후 교량 점검 예산 증가 사유 알려줘"

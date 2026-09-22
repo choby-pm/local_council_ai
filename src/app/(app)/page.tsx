@@ -8,12 +8,12 @@ import {
   ArrowUpRight,
   Calendar,
   FileText,
-  Scale,
   SendHorizonal,
   Sparkles,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { useMember } from "@/lib/member-context";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -25,10 +25,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 
-const quickPrompts = [
-  "이번 회기 상정 안건 요약해줘",
-  "최근 개정된 주민참여 조례 알려줘",
-  "우리 의회 예산 이상 증감 항목 찾아줘",
+const quickPrompts: { text: string; menu: "laws" | "meetings" | "budget" }[] = [
+  { text: "이번 회기 상정 안건 요약해줘", menu: "meetings" },
+  { text: "최근 개정된 조례 알려줘", menu: "laws" },
+  { text: "우리 의회 예산 이상 증감 항목 찾아줘", menu: "budget" },
 ];
 
 const agendaNews = [
@@ -59,17 +59,22 @@ const meetingNews = [
 
 export default function DashboardPage() {
   const router = useRouter();
+  const member = useMember();
   const [draft, setDraft] = useState("");
 
+  function goToSearch(menu: "laws" | "meetings" | "budget", question: string) {
+    if (!question.trim()) return;
+    router.push(`/${menu}?q=${encodeURIComponent(question.trim())}`);
+  }
+
   function handleSend() {
-    if (!draft.trim()) return;
-    router.push("/laws");
+    goToSearch("laws", draft);
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">안녕하세요, 홍길동 의원님</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">안녕하세요, {member.name} 의원님</h1>
         <p className="text-sm text-muted-foreground">
           오늘 확인이 필요한 소식과 마감 일정을 정리했습니다.
         </p>
@@ -90,45 +95,6 @@ export default function DashboardPage() {
           </Link>
         </Button>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="size-4 text-muted-foreground" />
-            무엇을 도와드릴까요?
-          </CardTitle>
-          <CardDescription>
-            법령·조례, 회의·안건, 예산·결산, 의정활동 보고서 — 원하시는 주제를 바로 질문해보세요.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex gap-2">
-            <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="예: 최근 3년간 청년 주거 지원 조례 제정 현황 알려줘"
-              className="h-11"
-            />
-            <Button size="icon" className="h-11 w-11 shrink-0" onClick={handleSend} disabled={!draft.trim()}>
-              <SendHorizonal />
-              <span className="sr-only">질문 보내기</span>
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {quickPrompts.map((prompt) => (
-              <Badge
-                key={prompt}
-                variant="secondary"
-                className="cursor-pointer px-3 py-1.5 font-normal hover:bg-secondary/70"
-                onClick={() => setDraft(prompt)}
-              >
-                {prompt}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <Card>
@@ -180,26 +146,44 @@ export default function DashboardPage() {
         </Card>
       </div>
 
+      <div className="flex-1" />
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Scale className="size-4 text-muted-foreground" />
-            빠른 실행
+            <Sparkles className="size-4 text-muted-foreground" />
+            무엇을 도와드릴까요?
           </CardTitle>
+          <CardDescription>
+            법령·조례, 회의·안건, 예산·결산, 의정활동 보고서 — 원하시는 주제를 바로 질문해보세요.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button variant="outline" asChild>
-            <Link href="/laws">법령·조례 검색</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/meetings">회의·안건 분석</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/budget">예산·결산 조회</Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/reports">의정활동 보고서 작성</Link>
-          </Button>
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex gap-2">
+            <Input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSend()}
+              placeholder="예: 최근 3년간 청년 주거 지원 조례 제정 현황 알려줘"
+              className="h-11"
+            />
+            <Button size="icon" className="h-11 w-11 shrink-0" onClick={handleSend} disabled={!draft.trim()}>
+              <SendHorizonal />
+              <span className="sr-only">질문 보내기</span>
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {quickPrompts.map((prompt) => (
+              <Badge
+                key={prompt.text}
+                variant="secondary"
+                className="cursor-pointer px-3 py-1.5 font-normal hover:bg-secondary/70"
+                onClick={() => goToSearch(prompt.menu, prompt.text)}
+              >
+                {prompt.text}
+              </Badge>
+            ))}
+          </div>
         </CardContent>
       </Card>
     </div>

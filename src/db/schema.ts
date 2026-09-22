@@ -64,7 +64,16 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   trustLevel: trustLevelEnum("trust_level"),
   kind: messageKindEnum("kind").notNull().default("normal"),
-  sourceIds: jsonb("source_ids").$type<string[]>(),
+  sources: jsonb("sources").$type<
+    {
+      index: number;
+      documentId: string;
+      sourceUrl: string | null;
+      title: string;
+      meta: string;
+      excerpt: string;
+    }[]
+  >(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -172,6 +181,8 @@ export const documents = pgTable("documents", {
   council: text("council"),
   title: text("title").notNull(),
   sourceMeta: jsonb("source_meta").$type<Record<string, string>>(),
+  // 원문이 있는 외부(의회 홈페이지 등) URL — 있으면 출처 클릭 시 내부 뷰어 대신 이쪽으로 연결
+  sourceUrl: text("source_url"),
   status: documentStatusEnum("status").notNull().default("수집됨"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

@@ -1,3 +1,5 @@
+"use client";
+
 import { Info } from "lucide-react";
 
 import {
@@ -9,17 +11,28 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { useMember } from "@/lib/member-context";
 
-const fields = [
-  { label: "이름", value: "홍길동" },
-  { label: "이메일", value: "hong.gd@council.go.kr" },
-  { label: "소속 의회", value: "OO광역시의회" },
-  { label: "소속 상임위", value: "행정안전위원회" },
-  { label: "지역구·비례", value: "비례대표" },
-  { label: "계정 상태", value: "활성" },
-];
+const statusLabel: Record<string, string> = {
+  pending: "승인대기",
+  active: "활성",
+  rejected: "거부됨",
+  disabled: "비활성화",
+};
 
 export default function MyPageAccountPage() {
+  const member = useMember();
+
+  const fields = [
+    { label: "이름", value: member.name },
+    { label: "이메일", value: member.email },
+    { label: "소속 의회", value: member.council },
+    { label: "소속 상임위", value: member.committee },
+    { label: "지역구·비례", value: member.district },
+    { label: "권한", value: member.role === "master" ? "마스터(관리자)" : "일반 의원" },
+    { label: "계정 상태", value: statusLabel[member.status] ?? member.status },
+  ];
+
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <div>

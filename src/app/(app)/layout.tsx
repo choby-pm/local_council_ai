@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCurrentMember } from "@/lib/member";
+import { MemberProvider } from "@/lib/member-context";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { userId } = await auth();
@@ -20,12 +21,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   if (!member.onboardedAt) redirect("/onboarding/confirm");
 
   return (
-    <SidebarProvider>
-      <AppSidebar member={member} />
-      <SidebarInset>
-        <AppHeader member={member} />
-        <main className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</main>
-      </SidebarInset>
-    </SidebarProvider>
+    <MemberProvider member={member}>
+      <SidebarProvider>
+        <AppSidebar member={member} />
+        <SidebarInset>
+          <AppHeader member={member} />
+          <main className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</main>
+        </SidebarInset>
+      </SidebarProvider>
+    </MemberProvider>
   );
 }
