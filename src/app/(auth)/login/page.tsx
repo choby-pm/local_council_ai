@@ -41,23 +41,35 @@ export default function LoginPage() {
     e.preventDefault();
     setFormError(null);
 
-    const { error } = await signIn.password({ identifier: email, password });
-    if (error) {
-      setFormError(error.message ?? "이메일 또는 비밀번호를 확인해주세요");
+    if (!isLoaded) {
+      setFormError("로그인 준비 중입니다. 잠시 후 다시 시도해주세요.");
       return;
     }
 
-    if (signIn.status === "complete") {
-      await signIn.finalize({
-        navigate: ({ decorateUrl }) => {
-          const url = decorateUrl("/");
-          if (url.startsWith("http")) {
-            window.location.href = url;
-          } else {
-            router.push(url);
-          }
-        },
-      });
+    try {
+      const { error } = await signIn.password({ identifier: email, password });
+      if (error) {
+        setFormError(error.message ?? "이메일 또는 비밀번호를 확인해주세요");
+        return;
+      }
+
+      if (signIn.status === "complete") {
+        await signIn.finalize({
+          navigate: ({ decorateUrl }) => {
+            const url = decorateUrl("/");
+            if (url.startsWith("http")) {
+              window.location.href = url;
+            } else {
+              router.push(url);
+            }
+          },
+        });
+      } else {
+        setFormError(`로그인을 완료할 수 없습니다 (상태: ${signIn.status}). 관리자에게 문의해주세요.`);
+      }
+    } catch (err) {
+      console.error("signIn.password failed", err);
+      setFormError("로그인 요청 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
     }
   }
 
@@ -103,7 +115,7 @@ export default function LoginPage() {
             </p>
           )}
 
-          <Button type="submit" className="mt-2 w-full" disabled={fetchStatus === "fetching"}>
+          <Button type="submit" className="mt-2 w-full" disabled={!isLoaded || fetchStatus === "fetching"}>
             로그인
           </Button>
         </CardContent>
