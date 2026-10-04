@@ -188,7 +188,7 @@ npx dotenv -e .env.local -- npx tsx scripts/promote-master.ts <아이디>
 
 | 문서 | 내용 |
 | --- | --- |
-| [의사결정 기록](docs/decisions.md) | 단계별 결정 15건의 대안·이유·영향, 아직 정하지 않은 것 |
+| [의사결정 기록](docs/decisions.md) | 단계별 결정 20건의 대안·이유·영향, 아직 정하지 않은 것 |
 | [01. 문제 정의](docs/01-problem-definition.md) | 사용자, 문제, 핵심 업무 선정 근거, 성공 지표, 범위 밖 항목 |
 | [02. Discovery](docs/02-discovery.md) | 사용자 접근이 불가능할 때의 대체 조사, 가설과 검증 계획 |
 | [03. 데이터와 구조](docs/03-data-and-architecture.md) | 데이터 유형별 조회 방식 결정 기록, 시스템 구조, 알려진 제약 |
