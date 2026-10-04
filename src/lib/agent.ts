@@ -70,6 +70,8 @@ export async function runCouncilAgent(opts: {
   docTypes: DocType[];
   history: ModelMessage[];
   question: string;
+  // 의원이 고른 모델 (resolveRequestedModel로 검증된 값)
+  modelId: string;
 }): Promise<AgentResult> {
   const { member, docTypes } = opts;
   const gathered: AgentSource[] = [];
@@ -206,7 +208,7 @@ export async function runCouncilAgent(opts: {
   };
 
   const { text } = await generateText({
-    model: chatModel(),
+    model: chatModel(opts.modelId),
     system: systemPrompt(opts.member),
     messages: [...opts.history, { role: "user", content: opts.question }],
     tools,

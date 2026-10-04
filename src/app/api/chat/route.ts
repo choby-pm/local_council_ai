@@ -5,7 +5,7 @@ import type { ModelMessage } from "ai";
 import { getDb } from "@/db";
 import { conversations, messages } from "@/db/schema";
 import { runCouncilAgent, type AgentSource, type DocType } from "@/lib/agent";
-import { CHAT_MODEL, classifyAiError, type AiFailure, type TrustLevel } from "@/lib/ai";
+import { classifyAiError, resolveRequestedModel, type AiFailure, type TrustLevel } from "@/lib/ai";
 import { getActiveMember, type Member } from "@/lib/member";
 import { getQuestionUsage, isOverLimit } from "@/lib/usage";
 import { isUuid } from "@/lib/utils";
@@ -52,9 +52,10 @@ async function answerQuestion(
   member: Member,
   question: string,
   docTypes: DocType[],
-  history: ModelMessage[]
+  history: ModelMessage[],
+  modelId: string
 ): Promise<Answer> {
-  const result = await runCouncilAgent({ member, docTypes, history, question });
+  const result = await runCouncilAgent({ member, docTypes, history, question, modelId });
 
   // 인용한 근거가 없으면 답변으로 내보내지 않음 (근거 없는 답변 금지 원칙)
   if (result.sources.length === 0) {
@@ -80,6 +81,8 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => null);
   const menu = body?.menu;
+  // 허용 목록에 없는 모델은 기본 모델로 (요청 본문은 신뢰하지 않음)
+  const modelId = resolveRequestedModel(body?.model);
   const question = typeof body?.question === "string" ? body.question.trim() : "";
   let conversationId: string | undefined = body?.conversationId ?? undefined;
 
@@ -141,11 +144,11 @@ export async function POST(req: NextRequest) {
   let answer: Answer;
   try {
     const history = await loadHistory(conversationId, userMessage.id);
-    answer = await answerQuestion(member, question, docTypes, history);
+    answer = await answerQuestion(member, question, docTypes, history, modelId);
   } catch (error) {
     // 실패도 대화 기록에 남겨, 질문만 덩그러니 남고 답이 없는 상태를 막음
     const failure = classifyAiError(error);
-    console.error(`[chat] ${CHAT_MODEL} 호출 실패 (${failure})`, error);
+    console.error(`[chat] ${modelId} 호출 실패 (${failure})`, error);
     answer = { kind: "error", text: FAILURE_MESSAGES[failure], trust: null, sources: [] };
   }
 
@@ -160,6 +163,7 @@ export async function POST(req: NextRequest) {
       trustLevel: answer.trust,
       kind: answer.kind,
       sources: sourcesSnapshot,
+      model: modelId,
     })
     .returning();
 
@@ -174,6 +178,7 @@ export async function POST(req: NextRequest) {
       trustLevel: answer.trust,
       kind: answer.kind,
       sources: sourcesSnapshot,
+      model: modelId,
     },
     usage: { used: usage.used + 1, limit: usage.limit },
   });

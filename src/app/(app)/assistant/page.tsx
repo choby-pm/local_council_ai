@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ChatMenuPanel } from "@/components/chat/chat-menu-panel";
+import { chatModelOptions } from "@/lib/ai";
 import { getAuditSuggestions } from "@/lib/audit";
 import { getActiveMember } from "@/lib/member";
 
@@ -36,6 +37,7 @@ export default async function AssistantPage({ searchParams }: PageProps<"/assist
         placeholder="예: 버스정책과가 작년 행정사무감사에서 지적받은 내용 알려줘"
         initialQuestion={typeof q === "string" ? q : undefined}
         suggestions={suggestions}
+        modelOptions={chatModelOptions()}
       />
     </div>
   );

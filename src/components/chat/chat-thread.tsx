@@ -5,6 +5,13 @@ import { SendHorizonal, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnswerUnavailable } from "@/components/chat/answer-unavailable";
 import { AssistantMessage, UserMessage } from "@/components/chat/messages";
@@ -21,7 +28,24 @@ export type DbMessage = {
   trustLevel: TrustLevel | null;
   kind: "normal" | "unavailable" | "empty" | "error";
   sources: CitationSource[] | null;
+  // 답변을 만든 모델 ID (assistant 메시지만)
+  model?: string | null;
 };
+
+export type ChatModelOption = { id: string; label: string; note: string };
+
+const MODEL_STORAGE_KEY = "chat-model";
+
+// 브라우저에 기억한 모델 — 저장소가 막혀 있어도 기본 모델로 동작
+function loadSavedModel(options: ChatModelOption[]): string {
+  const fallback = options.find((m) => m.note === "기본")?.id ?? options[0]?.id ?? "";
+  try {
+    const saved = window.localStorage.getItem(MODEL_STORAGE_KEY);
+    return saved && options.some((m) => m.id === saved) ? saved : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 // "limit"은 DB에 저장하지 않는 화면 전용 안내(일일 질문 한도 초과)
 type ThreadMessage = Omit<DbMessage, "kind"> & { kind: DbMessage["kind"] | "limit" };
@@ -43,7 +67,15 @@ function LoadingBubble() {
   );
 }
 
-function MessageView({ message, onRetry }: { message: ThreadMessage; onRetry?: () => void }) {
+function MessageView({
+  message,
+  onRetry,
+  modelLabel,
+}: {
+  message: ThreadMessage;
+  onRetry?: () => void;
+  modelLabel?: string;
+}) {
   if (message.role === "user") {
     return <UserMessage>{message.content}</UserMessage>;
   }
@@ -80,7 +112,12 @@ function MessageView({ message, onRetry }: { message: ThreadMessage; onRetry?: (
       trust={message.trustLevel ?? undefined}
       saveable
       messageId={message.id}
-      footer={<SourceList sources={message.sources ?? []} />}
+      footer={
+        <>
+          <SourceList sources={message.sources ?? []} />
+          {modelLabel && <p className="text-[11px] text-muted-foreground">{modelLabel} 답변</p>}
+        </>
+      }
     >
       {renderWithCitations(message.content, message.sources ?? [])}
     </AssistantMessage>
@@ -98,6 +135,7 @@ export function ChatThread({
   onConversationCreated,
   autoSendQuestion,
   suggestions = [],
+  modelOptions = [],
 }: {
   menu: "laws" | "meetings" | "budget" | "assistant";
   conversationId: string | null;
@@ -106,12 +144,31 @@ export function ChatThread({
   onConversationCreated?: (conv: { id: string; title: string; updatedAt: string }) => void;
   autoSendQuestion?: string;
   suggestions?: ChatSuggestion[];
+  modelOptions?: ChatModelOption[];
 }) {
   const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
   const [activeConversationId, setActiveConversationId] = useState(conversationId);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [usage, setUsage] = useState<QuestionUsage | null>(null);
+  const [model, setModel] = useState("");
+
+  useEffect(() => {
+    // localStorage는 브라우저에서만 읽을 수 있어 마운트 후 반영
+    queueMicrotask(() => setModel(loadSavedModel(modelOptions)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function chooseModel(id: string) {
+    setModel(id);
+    try {
+      window.localStorage.setItem(MODEL_STORAGE_KEY, id);
+    } catch {
+      // 저장하지 못해도 이번 화면에서는 선택이 유지됨
+    }
+  }
+
+  const labelOf = (id?: string | null) => modelOptions.find((m) => m.id === id)?.label ?? id ?? undefined;
 
   const limitReached = usage?.limit != null && usage.used >= usage.limit;
 
@@ -151,7 +208,7 @@ export function ChatThread({
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: activeConversationId, menu, question }),
+        body: JSON.stringify({ conversationId: activeConversationId, menu, question, model: model || undefined }),
       });
       const data = await res.json().catch(() => null);
 
@@ -191,6 +248,7 @@ export function ChatThread({
             trustLevel: data.assistantMessage.trustLevel,
             kind: data.assistantMessage.kind,
             sources: data.assistantMessage.sources,
+            model: data.assistantMessage.model,
           },
         ];
       });
@@ -260,6 +318,7 @@ export function ChatThread({
               key={m.id}
               message={m}
               onRetry={canRetry ? () => handleSend(previous.content) : undefined}
+              modelLabel={m.role === "assistant" && m.kind === "normal" ? labelOf(m.model) : undefined}
             />
           );
         })}
@@ -268,6 +327,21 @@ export function ChatThread({
 
       <div className="flex flex-col gap-1.5 border-t pt-3">
         <div className="flex gap-2">
+          {modelOptions.length > 1 && (
+            <Select value={model} onValueChange={chooseModel} disabled={loading}>
+              <SelectTrigger className="h-11! w-36 shrink-0 text-xs sm:w-44" aria-label="답변 모델">
+                <SelectValue placeholder="모델" />
+              </SelectTrigger>
+              <SelectContent>
+                {modelOptions.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.label}
+                    <span className="text-muted-foreground"> · {m.note}</span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

@@ -40,8 +40,34 @@ function resolveChatModelId(): ChatModelId {
 
 export const CHAT_MODEL = resolveChatModelId();
 
-export function chatModel() {
-  return registry.languageModel(CHAT_MODEL);
+export type ChatModelOption = { id: string; label: string; note: string };
+
+// 의원이 AI 비서에서 고를 수 있는 모델. Gemini 무료 티어는 모델마다 하루 요청 한도가 따로 있다.
+// 유료(Claude)는 ALLOW_PAID_MODELS=true일 때만 목록에 나온다.
+const MODEL_OPTIONS: (ChatModelOption & { paid?: boolean })[] = [
+  { id: "google:gemini-3.8-flash", label: "Gemini 3.8 Flash", note: "최신" },
+  { id: "google:gemini-3.6-flash", label: "Gemini 3.6 Flash", note: "기본" },
+  { id: "google:gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", note: "빠름" },
+  { id: "google:gemini-2.5-flash", label: "Gemini 2.5 Flash", note: "이전 세대" },
+  { id: "anthropic:claude-sonnet-5-5", label: "Claude Sonnet 5.5", note: "유료", paid: true },
+  { id: "anthropic:claude-haiku-4-5", label: "Claude Haiku 4.5", note: "유료·빠름", paid: true },
+];
+
+export function chatModelOptions(): ChatModelOption[] {
+  const allowPaid = process.env.ALLOW_PAID_MODELS === "true";
+  const options = MODEL_OPTIONS.filter((m) => allowPaid || !m.paid).map(({ id, label, note }) => ({ id, label, note }));
+  // CHAT_MODEL로 지정한 기본 모델이 목록에 없으면 맨 앞에 추가
+  if (!options.some((m) => m.id === CHAT_MODEL)) options.unshift({ id: CHAT_MODEL, label: CHAT_MODEL, note: "기본" });
+  return options;
+}
+
+/** 요청으로 들어온 모델 ID를 허용 목록으로 검증한다. 목록에 없으면 기본 모델 */
+export function resolveRequestedModel(requested: unknown): string {
+  return typeof requested === "string" && chatModelOptions().some((m) => m.id === requested) ? requested : CHAT_MODEL;
+}
+
+export function chatModel(modelId: string = CHAT_MODEL) {
+  return registry.languageModel(modelId as ChatModelId);
 }
 
 // 임베딩 모델은 교체 대상이 아님 — 바꾸면 저장된 document_chunks 임베딩을 전부 다시 만들어야 하고

@@ -77,6 +77,7 @@
 | 하는 일 | 예시 | AI 사용 |
 | --- | --- | --- |
 | 추천 질문 | 빈 대화에 "교통국(버스정책과) · 버스 준공영제 도입 — 2개 연도 반복" 같은 카드 | 없음 (DB와 계산만) |
+| 모델 선택 | 입력창 옆에서 Gemini 무료 모델 4종 중 선택 (유료 Claude는 허용 시), 답변마다 모델 표시 | — |
 | 근거 검색과 답변 | "버스정책과가 작년 행감에서 뭐 지적받았어?" → 지적사항·이전 연도 이력·회의록 발언을 찾아 출처와 함께 답변 | 질문할 때 |
 | 질의서 초안 | 이행 여부·시점·미이행 사유·향후 계획·예산을 묻는 질의 3~5개 | 요청할 때 |
 | 자료요구서 초안 | 공개되지 않는 지적사항 처리결과를 행감 전에 서면으로 요구 ([D-19](docs/decisions.md)) | 요청할 때 |
@@ -163,7 +164,7 @@ npx dotenv -e .env.local -- npx tsx scripts/create-account.ts <아이디> <비�
 | `DATABASE_URL` | 예 | Neon Postgres 연결 문자열 |
 | `DATABASE_URL_UNPOOLED` | 아니오 | 마이그레이션·확장 설치용 직접 연결 (없으면 `DATABASE_URL` 사용) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | 예 | 임베딩과 기본 답변 모델(Gemini) 호출용 |
-| `CHAT_MODEL` | 아니오 | 답변 모델 교체. `google:<모델ID>` 또는 `anthropic:<모델ID>` (기본 `google:gemini-3.6-flash`) |
+| `CHAT_MODEL` | 아니오 | 기본 답변 모델. `google:<모델ID>` 또는 `anthropic:<모델ID>` (기본 `google:gemini-3.6-flash`). 의원은 AI 비서에서 다른 모델을 고를 수 있음 |
 | `ALLOW_PAID_MODELS` | 아니오 | `true`일 때만 유료 프로바이더(anthropic) 허용 |
 | `ANTHROPIC_API_KEY` | 아니오 | `CHAT_MODEL`이 anthropic일 때 필요 |
 | `DAILY_QUESTION_LIMIT` | 아니오 | 회원별 하루 질문 한도 (기본 50) |
@@ -183,6 +184,7 @@ npx dotenv -e .env.local -- npx tsx scripts/create-account.ts <아이디> <비�
 
 | 날짜 | 내용 |
 | --- | --- |
+| 2026-10-05 | AI 비서에서 답변 모델 선택, 답변마다 모델 기록·표시 / 사이드바 접기 버튼을 로고 옆으로, 가입 승인 대기 건수 배지 |
 | 2026-10-05 | 관리자 계정 관리 추가(비활성화·재활성화·삭제·관리자 지정), 사이드바 접기 버튼을 사이드바 안으로 이동 |
 | 2026-10-05 | AI 비서 중심으로 재구성: 로그인 후 첫 화면을 AI 비서로(사이드바는 대시보드 다음), 행정사무감사 준비 화면을 비서의 추천 질문으로 흡수, 초안은 채팅에서 요청 |
 | 2026-10-05 | 메뉴 통합: 법령·조례 검색과 회의·안건을 "AI 비서" 하나로, 동작하지 않던 목업 메뉴 6개(예산·결산, 의정활동 보고서, 활동이력, 저장한 자료함, 관리자 계정 관리·배치·오류) 삭제 |
@@ -204,7 +206,7 @@ npx dotenv -e .env.local -- npx tsx scripts/create-account.ts <아이디> <비�
 
 | 문서 | 내용 |
 | --- | --- |
-| [의사결정 기록](docs/decisions.md) | 단계별 결정 26건의 대안·이유·영향, 아직 정하지 않은 것 |
+| [의사결정 기록](docs/decisions.md) | 단계별 결정 27건의 대안·이유·영향, 아직 정하지 않은 것 |
 | [01. 문제 정의](docs/01-problem-definition.md) | 사용자, 문제, 핵심 업무 선정 근거, 성공 지표, 범위 밖 항목 |
 | [02. Discovery](docs/02-discovery.md) | 사용자 접근이 불가능할 때의 대체 조사, 가설과 검증 계획 |
 | [03. 데이터와 구조](docs/03-data-and-architecture.md) | 데이터 유형별 조회 방식 결정 기록, 시스템 구조, 알려진 제약 |

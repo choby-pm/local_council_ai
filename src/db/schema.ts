@@ -82,6 +82,8 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   trustLevel: trustLevelEnum("trust_level"),
   kind: messageKindEnum("kind").notNull().default("normal"),
+  // 답변을 만든 모델 ("google:gemini-3.6-flash" 형식) — 의원이 고른 모델 기록, 모델별 평가용
+  model: text("model"),
   sources: jsonb("sources").$type<
     {
       index: number;

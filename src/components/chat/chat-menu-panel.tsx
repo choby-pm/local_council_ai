@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 
-import { ChatThread, type ChatSuggestion, type DbMessage } from "@/components/chat/chat-thread";
+import {
+  ChatThread,
+  type ChatModelOption,
+  type ChatSuggestion,
+  type DbMessage,
+} from "@/components/chat/chat-thread";
 import { ConversationList, type ConversationItem } from "@/components/chat/conversation-list";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -18,6 +23,7 @@ type ApiMessage = {
   sources:
     | { index: number; documentId: string; sourceUrl: string | null; title: string; meta: string; excerpt: string }[]
     | null;
+  model: string | null;
 };
 
 function formatUpdatedAt(iso: string) {
@@ -34,11 +40,13 @@ export function ChatMenuPanel({
   placeholder,
   initialQuestion,
   suggestions = [],
+  modelOptions = [],
 }: {
   menu: Menu;
   placeholder: string;
   initialQuestion?: string;
   suggestions?: ChatSuggestion[];
+  modelOptions?: ChatModelOption[];
 }) {
   const [items, setItems] = useState<ConversationItem[]>([]);
   const [activeId, setActiveId] = useState<string>("");
@@ -84,6 +92,7 @@ export function ChatMenuPanel({
             trustLevel: m.trustLevel,
             kind: m.kind,
             sources: m.sources,
+            model: m.model,
           }))
         );
         setLoadingMessages(false);
@@ -155,6 +164,7 @@ export function ChatMenuPanel({
           placeholder={placeholder}
           autoSendQuestion={activeId ? undefined : initialQuestion}
           suggestions={suggestions}
+          modelOptions={modelOptions}
           onConversationCreated={(conv) => {
             setItems((prev) => [{ id: conv.id, title: conv.title, updatedAt: "방금 전" }, ...prev]);
             setActiveId(conv.id);
