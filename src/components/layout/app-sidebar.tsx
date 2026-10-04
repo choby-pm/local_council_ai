@@ -11,6 +11,7 @@ import {
   PanelLeftOpen,
   ShieldCheck,
   User,
+  Users,
 } from "lucide-react";
 
 import {
@@ -37,7 +38,10 @@ const mainNav = [
   { title: "AI 비서", url: "/assistant", icon: MessageSquareText },
 ];
 
-const adminNav = [{ title: "가입 승인", url: "/admin/approvals", icon: ClipboardCheck }];
+const adminNav = [
+  { title: "가입 승인", url: "/admin/approvals", icon: ClipboardCheck },
+  { title: "계정 관리", url: "/admin/accounts", icon: Users },
+];
 
 function NavItem({ item, active }: { item: (typeof mainNav)[number]; active: boolean }) {
   return (
