@@ -1,0 +1,98 @@
+import "server-only";
+
+// 고양특례시의회 홈페이지를 도구로 감싼다 (공식 API 없음, 결정 D-09).
+// - 회의록 목록 검색: /promote/minutes/search.do — 대수별, 한 단어 검색만 결과가 나옴, 10~18초 소요
+// - 회의록 본문: /viewer/minutes.do?uid=N — 발언 전문이 HTML 텍스트
+
+const BASE = "https://www.goyangcouncil.go.kr";
+const UA = "Mozilla/5.0 (compatible; local-council-ai/0.1)";
+// 2026년 7월 시작한 제10대와 직전 제9대를 기본 검색 범위로 둔다
+const DEFAULT_TERMS = [10, 9];
+const SEARCH_TIMEOUT_MS = 30_000;
+
+export type MinutesHit = { uid: string; title: string; url: string };
+
+function decode(s: string) {
+  return s
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+async function fetchText(url: string) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": UA },
+    signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`의회 홈페이지 응답 오류 ${res.status}`);
+  return res.text();
+}
+
+/**
+ * 회의록 목록 검색. 여러 단어를 넣으면 결과가 0건이 되므로 첫 단어만 검색하고,
+ * 나머지 단어는 제목(회의명·피감사기관)에 들어 있는지로 거른다.
+ */
+export async function searchMinutes(query: string, opts: { terms?: number[]; limit?: number } = {}) {
+  const [keyword, ...filters] = query.trim().split(/\s+/);
+  if (!keyword) return [];
+  const terms = opts.terms ?? DEFAULT_TERMS;
+  const limit = opts.limit ?? 8;
+
+  const pages = await Promise.all(
+    terms.map((th) =>
+      fetchText(
+        `${BASE}/promote/minutes/search.do?cl_cd_sch=CT&th_sch=${th}&schwrd=${encodeURIComponent(keyword)}`
+      ).catch(() => "")
+    )
+  );
+
+  const hits: MinutesHit[] = [];
+  const seen = new Set<string>();
+  for (const html of pages) {
+    for (const m of html.matchAll(/href="\/viewer\/minutes\.do\?uid=(\d+)[^"]*"\s+title="([^"]+)"/g)) {
+      const [, uid, rawTitle] = m;
+      if (seen.has(uid)) continue;
+      seen.add(uid);
+      const title = decode(rawTitle).replace(/\s+/g, " ").replace(/^고양특례시의회\s*/, "").trim();
+      hits.push({ uid, title, url: `${BASE}/viewer/minutes.do?uid=${uid}` });
+    }
+  }
+
+  const filtered = filters.length > 0 ? hits.filter((h) => filters.every((f) => h.title.includes(f))) : hits;
+  return (filtered.length > 0 ? filtered : hits).slice(0, limit);
+}
+
+/** 회의록 본문에서 검색어 주변 발언만 잘라 돌려준다 (본문 전체는 수십만 자라 모델에 넣기엔 큼) */
+export async function readMinutesExcerpts(uid: string, keyword: string, opts: { window?: number; max?: number } = {}) {
+  if (!/^\d+$/.test(uid)) throw new Error("잘못된 회의록 번호");
+  const window = opts.window ?? 600;
+  const max = opts.max ?? 4;
+
+  const html = await fetchText(`${BASE}/viewer/minutes.do?uid=${uid}`);
+  const text = decode(
+    html
+      .replace(/<script[\s\S]*?<\/script>/g, "")
+      .replace(/<style[\s\S]*?<\/style>/g, "")
+      .replace(/<br\s*\/?>/g, "\n")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n");
+
+  const title = html.match(/<title>([^<]*)<\/title>/)?.[1]?.trim() ?? `회의록 ${uid}`;
+  const words = keyword.trim().split(/\s+/).filter(Boolean);
+  const excerpts: string[] = [];
+  let from = 0;
+  while (excerpts.length < max && words.length > 0) {
+    const positions = words.map((w) => text.indexOf(w, from)).filter((i) => i >= 0);
+    if (positions.length === 0) break;
+    const at = Math.min(...positions);
+    excerpts.push(text.slice(Math.max(0, at - window / 2), at + window).trim());
+    from = at + window;
+  }
+
+  return { uid, title: decode(title), url: `${BASE}/viewer/minutes.do?uid=${uid}`, excerpts };
+}

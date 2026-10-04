@@ -1,23 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, cosineDistance, eq, inArray, or, isNull } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
+import type { ModelMessage } from "ai";
 
 import { getDb } from "@/db";
-import { conversations, documentChunks, documents, messages } from "@/db/schema";
+import { conversations, messages } from "@/db/schema";
+import { runCouncilAgent, type AgentSource, type DocType } from "@/lib/agent";
+import { CHAT_MODEL, classifyAiError, type AiFailure, type TrustLevel } from "@/lib/ai";
+import { getLinkedCouncilMember } from "@/lib/council-members";
 import { getActiveMember, type Member } from "@/lib/member";
 import { getQuestionUsage, isOverLimit } from "@/lib/usage";
 import { isUuid } from "@/lib/utils";
-import {
-  CHAT_MODEL,
-  classifyAiError,
-  embedQuery,
-  generateGroundedAnswer,
-  trustFromDistance,
-  type AiFailure,
-  type RetrievedChunk,
-  type TrustLevel,
-} from "@/lib/ai";
-
-type DocType = "law" | "ordinance" | "meeting" | "budget";
 
 const MENU_DOC_TYPES: Record<string, DocType[]> = {
   laws: ["law", "ordinance"],
@@ -37,64 +29,47 @@ type Answer = {
   kind: "normal" | "unavailable" | "empty" | "error";
   text: string;
   trust: TrustLevel | null;
-  sources: RetrievedChunk[];
+  sources: AgentSource[];
 };
 
-async function answerQuestion(member: Member, question: string, docTypes: DocType[]): Promise<Answer> {
-  // 1) 질의 임베딩
-  const queryEmbedding = await embedQuery(question);
+// 이전 대화를 에이전트에 넘길 최대 메시지 수 (질문·답변 쌍 기준 3턴)
+const HISTORY_LIMIT = 6;
 
-  // 2) pgvector 코사인 유사도 검색 (메뉴별 문서유형 + 의회 테넌시 범위)
-  const distanceExpr = cosineDistance(documentChunks.embedding, queryEmbedding);
+async function loadHistory(conversationId: string, excludeMessageId: string): Promise<ModelMessage[]> {
   const rows = await getDb()
-    .select({
-      chunkId: documentChunks.id,
-      documentId: documents.id,
-      title: documents.title,
-      sourceMeta: documents.sourceMeta,
-      sourceUrl: documents.sourceUrl,
-      content: documentChunks.content,
-      distance: distanceExpr,
-    })
-    .from(documentChunks)
-    .innerJoin(documents, eq(documents.id, documentChunks.documentId))
-    .where(
-      and(
-        inArray(documents.type, docTypes),
-        or(isNull(documents.council), eq(documents.council, member.council))
-      )
-    )
-    .orderBy(distanceExpr)
-    .limit(5);
+    .select({ role: messages.role, content: messages.content, kind: messages.kind })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), ne(messages.id, excludeMessageId)))
+    .orderBy(asc(messages.createdAt));
+  return rows
+    .filter((m) => m.kind === "normal")
+    .slice(-HISTORY_LIMIT)
+    .map((m) => ({ role: m.role, content: m.content }));
+}
 
-  const chunks: RetrievedChunk[] = rows.map((r) => ({
-    chunkId: r.chunkId,
-    documentId: r.documentId,
-    title: r.title,
-    meta: r.sourceMeta ? Object.values(r.sourceMeta).join(" · ") : "",
-    sourceUrl: r.sourceUrl,
-    content: r.content,
-    distance: Number(r.distance),
-  }));
+async function answerQuestion(
+  member: Member,
+  question: string,
+  docTypes: DocType[],
+  history: ModelMessage[]
+): Promise<Answer> {
+  const linked = await getLinkedCouncilMember(member);
+  const result = await runCouncilAgent({ member, linked, docTypes, history, question });
 
-  if (chunks.length === 0) {
-    return { kind: "empty", text: "검색 결과가 없습니다.", trust: null, sources: [] };
+  // 인용한 근거가 없으면 답변으로 내보내지 않음 (근거 없는 답변 금지 원칙)
+  if (result.sources.length === 0) {
+    return result.gathered === 0
+      ? { kind: "empty", text: "관련 자료를 찾지 못했습니다. 질문을 바꾸거나 범위를 좁혀 다시 물어봐 주세요.", trust: null, sources: [] }
+      : {
+          kind: "unavailable",
+          text: "관련 자료는 있으나 충분한 근거를 찾지 못해 답변을 제공하지 않습니다.",
+          trust: null,
+          sources: [],
+        };
   }
 
-  const trust = trustFromDistance(chunks[0].distance);
-  if (trust === "low") {
-    return {
-      kind: "unavailable",
-      text: "관련 자료는 있으나 충분한 근거를 찾지 못해 답변을 제공하지 않습니다.",
-      trust: null,
-      sources: [],
-    };
-  }
-
-  // 3) 근거 기반 답변 생성
-  const sources = chunks.slice(0, 3);
-  const text = await generateGroundedAnswer(question, sources);
-  return { kind: "normal", text, trust, sources };
+  const trust: TrustLevel = result.sources.length >= 2 ? "high" : "medium";
+  return { kind: "normal", text: result.text, trust, sources: result.sources };
 }
 
 export async function POST(req: NextRequest) {
@@ -169,7 +144,8 @@ export async function POST(req: NextRequest) {
 
   let answer: Answer;
   try {
-    answer = await answerQuestion(member, question, docTypes);
+    const history = await loadHistory(conversationId, userMessage.id);
+    answer = await answerQuestion(member, question, docTypes, history);
   } catch (error) {
     // 실패도 대화 기록에 남겨, 질문만 덩그러니 남고 답이 없는 상태를 막음
     const failure = classifyAiError(error);
@@ -177,14 +153,7 @@ export async function POST(req: NextRequest) {
     answer = { kind: "error", text: FAILURE_MESSAGES[failure], trust: null, sources: [] };
   }
 
-  const sourcesSnapshot = answer.sources.map((s, i) => ({
-    index: i + 1,
-    documentId: s.documentId,
-    sourceUrl: s.sourceUrl,
-    title: s.title,
-    meta: s.meta,
-    excerpt: s.content,
-  }));
+  const sourcesSnapshot = answer.sources;
 
   const [assistantMessage] = await db
     .insert(messages)

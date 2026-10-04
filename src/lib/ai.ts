@@ -1,4 +1,4 @@
-import { APICallError, RetryError, createProviderRegistry, embed, generateText } from "ai";
+import { APICallError, RetryError, createProviderRegistry, embed } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google } from "@ai-sdk/google";
 
@@ -60,52 +60,6 @@ export async function embedQuery(text: string) {
 }
 
 export type TrustLevel = "high" | "medium" | "low";
-
-/**
- * pgvector `<=>` returns cosine distance (0 = identical, ~1+ = unrelated).
- * Thresholds are a starting heuristic — meant to be recalibrated once
- * real usage/feedback data (7-5) is available, per 7-8's TBD note.
- */
-export function trustFromDistance(distance: number): TrustLevel {
-  if (distance < 0.3) return "high";
-  if (distance < 0.38) return "medium";
-  return "low";
-}
-
-export type RetrievedChunk = {
-  chunkId: string;
-  documentId: string;
-  title: string;
-  meta: string;
-  sourceUrl: string | null;
-  content: string;
-  distance: number;
-};
-
-export async function generateGroundedAnswer(question: string, chunks: RetrievedChunk[]) {
-  const context = chunks
-    .map((c, i) => `[${i + 1}] ${c.title} (${c.meta})\n${c.content}`)
-    .join("\n\n");
-
-  const { text } = await generateText({
-    model: registry.languageModel(CHAT_MODEL),
-    system:
-      "당신은 대한민국 지방의회 의원을 돕는 법령·조례·회의록 검색 비서입니다. " +
-      "아래 제공된 근거 자료(context)에 있는 내용만 근거로 답변하세요. " +
-      "문장 끝에는 사용한 근거 번호를 [1], [2] 형식으로 표기하세요. " +
-      "근거 자료에 없는 내용은 추측하지 말고 답변하지 마세요. " +
-      "한국어로, 의정활동에 바로 쓸 수 있도록 간결하고 정확하게 답하세요.",
-    prompt: `질문: ${question}\n\n근거 자료:\n${context}`,
-    // 근거 종합·인용 정도의 단순 작업이라 추론은 최소로 두고 응답 속도·비용을 우선함.
-    // providerOptions는 프로바이더별로 키가 나뉘어 있어, 현재 모델의 프로바이더 설정만 적용된다.
-    providerOptions: {
-      google: { thinkingConfig: { thinkingBudget: 0 } },
-      anthropic: { effort: "low" },
-    },
-  });
-
-  return text;
-}
 
 export type AiFailure = "quota" | "unavailable";
 
