@@ -8,10 +8,11 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnswerUnavailable } from "@/components/chat/answer-unavailable";
 import { AssistantMessage, UserMessage } from "@/components/chat/messages";
-import { EmptyResult, ErrorState } from "@/components/chat/state-panels";
+import { EmptyResult, ErrorState, LimitReachedNotice } from "@/components/chat/state-panels";
 import { renderWithCitations, type CitationSource } from "@/components/chat/render-citations";
 import { SourceList } from "@/components/chat/source-list";
 import type { TrustLevel } from "@/components/chat/trust-badge";
+import { cn } from "@/lib/utils";
 
 export type DbMessage = {
   id: string;
@@ -21,6 +22,11 @@ export type DbMessage = {
   kind: "normal" | "unavailable" | "empty" | "error";
   sources: CitationSource[] | null;
 };
+
+// "limit"은 DB에 저장하지 않는 화면 전용 안내(일일 질문 한도 초과)
+type ThreadMessage = Omit<DbMessage, "kind"> & { kind: DbMessage["kind"] | "limit" };
+
+type QuestionUsage = { used: number; limit: number | null };
 
 function LoadingBubble() {
   return (
@@ -37,7 +43,7 @@ function LoadingBubble() {
   );
 }
 
-function MessageView({ message }: { message: DbMessage }) {
+function MessageView({ message, onRetry }: { message: ThreadMessage; onRetry?: () => void }) {
   if (message.role === "user") {
     return <UserMessage>{message.content}</UserMessage>;
   }
@@ -58,7 +64,14 @@ function MessageView({ message }: { message: DbMessage }) {
   if (message.kind === "error") {
     return (
       <AssistantMessage className="max-w-full" messageId={message.id}>
-        <ErrorState />
+        <ErrorState description={message.content || undefined} onRetry={onRetry} />
+      </AssistantMessage>
+    );
+  }
+  if (message.kind === "limit") {
+    return (
+      <AssistantMessage className="max-w-full">
+        <LimitReachedNotice message={message.content} />
       </AssistantMessage>
     );
   }
@@ -89,10 +102,35 @@ export function ChatThread({
   onConversationCreated?: (conv: { id: string; title: string; updatedAt: string }) => void;
   autoSendQuestion?: string;
 }) {
-  const [messages, setMessages] = useState<DbMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
   const [activeConversationId, setActiveConversationId] = useState(conversationId);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
+  const [usage, setUsage] = useState<QuestionUsage | null>(null);
+
+  const limitReached = usage?.limit != null && usage.used >= usage.limit;
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/chat")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.usage) setUsage(data.usage);
+      })
+      .catch(() => {
+        // 남은 횟수 표시는 부가 정보 — 실패해도 채팅은 그대로 사용 가능
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function appendNotice(kind: "error" | "limit", content: string) {
+    setMessages((prev) => [
+      ...prev,
+      { id: `${kind}-${Date.now()}`, role: "assistant", content, trustLevel: null, kind, sources: null },
+    ]);
+  }
 
   async function handleSend(override?: string) {
     const question = (override ?? draft).trim();
@@ -110,8 +148,22 @@ export function ChatThread({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: activeConversationId, menu, question }),
       });
-      if (!res.ok) throw new Error("request failed");
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        if (data?.code === "daily_limit") {
+          // 서버에 저장되지 않은 질문이므로 말풍선을 거두고 입력창에 되돌려 둠
+          setMessages((prev) => prev.filter((m) => !m.id.startsWith("pending-")));
+          setDraft(question);
+          if (data.usage) setUsage(data.usage);
+          appendNotice("limit", data.error);
+        } else {
+          appendNotice("error", data?.error ?? "");
+        }
+        return;
+      }
+
+      if (data.usage) setUsage(data.usage);
 
       if (!activeConversationId) {
         setActiveConversationId(data.conversationId);
@@ -138,10 +190,7 @@ export function ChatThread({
         ];
       });
     } catch {
-      setMessages((prev) => [
-        ...prev,
-        { id: `error-${Date.now()}`, role: "assistant", content: "", trustLevel: null, kind: "error", sources: null },
-      ]);
+      appendNotice("error", "네트워크 연결을 확인한 뒤 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }
@@ -162,27 +211,49 @@ export function ChatThread({
             <p className="text-sm">새 대화를 시작해보세요</p>
           </div>
         )}
-        {messages.map((m) => (
-          <MessageView key={m.id} message={m} />
-        ))}
+        {messages.map((m, i) => {
+          // 마지막 오류 답변에만 재시도 제공 — 직전 사용자 질문을 다시 보냄
+          const previous = messages[i - 1];
+          const canRetry =
+            m.kind === "error" && i === messages.length - 1 && previous?.role === "user" && !limitReached;
+          return (
+            <MessageView
+              key={m.id}
+              message={m}
+              onRetry={canRetry ? () => handleSend(previous.content) : undefined}
+            />
+          );
+        })}
         {loading && <LoadingBubble />}
       </div>
 
-      <div className="flex gap-2 border-t pt-3">
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSend();
-          }}
-          placeholder={placeholder}
-          className="h-11"
-          disabled={loading}
-        />
-        <Button size="icon" className="h-11 w-11 shrink-0" onClick={() => handleSend()} disabled={loading}>
-          <SendHorizonal />
-          <span className="sr-only">질문 보내기</span>
-        </Button>
+      <div className="flex flex-col gap-1.5 border-t pt-3">
+        <div className="flex gap-2">
+          <Input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSend();
+            }}
+            placeholder={limitReached ? "오늘 사용할 수 있는 질문을 모두 사용했습니다" : placeholder}
+            className="h-11"
+            disabled={loading || limitReached}
+          />
+          <Button
+            size="icon"
+            className="h-11 w-11 shrink-0"
+            onClick={() => handleSend()}
+            disabled={loading || limitReached}
+          >
+            <SendHorizonal />
+            <span className="sr-only">질문 보내기</span>
+          </Button>
+        </div>
+        {usage?.limit != null && (
+          <p className={cn("text-right text-xs text-muted-foreground", limitReached && "text-destructive")}>
+            오늘 남은 질문 {Math.max(usage.limit - usage.used, 0)} / {usage.limit}회
+          </p>
+        )}
       </div>
     </div>
   );
