@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { auth } from "@clerk/nextjs/server";
 
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -8,12 +7,9 @@ import { getCurrentMember } from "@/lib/member";
 import { MemberProvider } from "@/lib/member-context";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
-  const { userId } = await auth();
-  if (!userId) redirect("/login");
-
   const member = await getCurrentMember();
-  // Clerk 세션은 있지만 members row가 없음 — 가입은 시작했지만 프로필 저장이 안 된 상태
-  if (!member) redirect("/signup");
+  // 쿠키는 있으나 만료·삭제된 세션 포함
+  if (!member) redirect("/login");
 
   if (member.status === "pending") redirect("/pending-approval");
   if (member.status === "rejected") redirect("/rejected");

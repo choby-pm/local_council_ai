@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useClerk } from "@clerk/nextjs";
 import { Bell, LogOut, Settings, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { SessionExpiredDialog } from "@/components/layout/session-expired-dialog";
 import { cn } from "@/lib/utils";
+import { logout } from "@/app/(auth)/actions";
 
 const initialNotifications = [
   { id: "1", title: "본회의 안건 상정 D-2", desc: "제315회 임시회 상정 예정 안건 3건", unread: true },
@@ -43,7 +43,6 @@ export function AppHeader({ member }: { member: Member }) {
   const [freshnessIdx, setFreshnessIdx] = useState(0);
   const unreadCount = notifications.filter((n) => n.unread).length;
   const freshness = freshnessStates[freshnessIdx];
-  const { signOut } = useClerk();
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -124,7 +123,7 @@ export function AppHeader({ member }: { member: Member }) {
             <DropdownMenuLabel className="flex flex-col">
               <span className="text-sm font-medium">{member.name} 의원</span>
               <span className="text-xs font-normal text-muted-foreground">
-                {member.council} · {member.district}
+                {[member.council, member.district].filter(Boolean).join(" · ")}
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
@@ -137,7 +136,7 @@ export function AppHeader({ member }: { member: Member }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               variant="destructive"
-              onSelect={() => signOut({ redirectUrl: "/login" })}
+              onSelect={() => logout()}
             >
               <LogOut />
               로그아웃

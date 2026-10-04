@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Geist_Mono } from "next/font/google";
 import localFont from "next/font/local";
-import { ClerkProvider } from "@clerk/nextjs";
-import { shadcn } from "@clerk/ui/themes";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -31,9 +29,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={cn("h-full", "antialiased", pretendard.variable, geistMono.variable, "font-sans")}
     >
       <body className="min-h-full flex flex-col">
-        <ClerkProvider appearance={{ theme: shadcn }}>
-          <TooltipProvider>{children}</TooltipProvider>
-        </ClerkProvider>
+        <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>
   );

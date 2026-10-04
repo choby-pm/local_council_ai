@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { XCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { getCurrentMember } from "@/lib/member";
+
+import { logout } from "../actions";
 
 export default async function RejectedPage() {
   const member = await getCurrentMember();
@@ -30,9 +31,11 @@ export default async function RejectedPage() {
         <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
           {member.rejectedReason || "사유가 등록되지 않았습니다. 관리자에게 문의해주세요."}
         </p>
-        <Button asChild variant="outline" className="w-full">
-          <Link href="/signup">다시 가입 신청하기</Link>
-        </Button>
+        <form action={logout} className="w-full">
+          <Button type="submit" variant="outline" className="w-full">
+            로그아웃
+          </Button>
+        </form>
       </CardContent>
     </Card>
   );

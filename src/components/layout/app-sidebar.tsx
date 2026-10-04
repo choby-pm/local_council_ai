@@ -74,7 +74,7 @@ export function AppSidebar({ member }: { member: Member }) {
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">지방의회 AI비서</span>
                   <span className="text-xs text-muted-foreground">
-                    {member.council} · {member.committee}
+                    {[member.council, member.committee].filter(Boolean).join(" · ")}
                   </span>
                 </div>
               </Link>

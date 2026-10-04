@@ -25,10 +25,10 @@ export default function MyPageAccountPage() {
 
   const fields = [
     { label: "이름", value: member.name },
-    { label: "이메일", value: member.email },
+    { label: "아이디", value: member.username ?? "—" },
     { label: "소속 의회", value: member.council },
-    { label: "소속 상임위", value: member.committee },
-    { label: "지역구·비례", value: member.district },
+    { label: "소속 상임위", value: member.committee ?? "미지정" },
+    { label: "지역구·비례", value: member.district ?? "미지정" },
     { label: "권한", value: member.role === "master" ? "마스터(관리자)" : "일반 의원" },
     { label: "계정 상태", value: statusLabel[member.status] ?? member.status },
   ];

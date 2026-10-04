@@ -18,14 +18,19 @@ export const memberStatusEnum = pgEnum("member_status", [
   "disabled",
 ]);
 
+// 간이 인증(MVP): 아이디·비밀번호·이름만으로 가입하며 즉시 사용 가능.
+// clerkUserId·email은 이전 Clerk 가입자 데이터 보존용 — 인증 고도화 시 정리 예정.
 export const members = pgTable("members", {
   id: uuid("id").primaryKey().defaultRandom(),
-  clerkUserId: text("clerk_user_id").notNull().unique(),
+  username: text("username").unique(),
+  passwordHash: text("password_hash"),
+  clerkUserId: text("clerk_user_id").unique(),
   name: text("name").notNull(),
-  email: text("email").notNull(),
-  council: text("council").notNull(),
-  committee: text("committee").notNull(),
-  district: text("district").notNull(),
+  email: text("email"),
+  // 현재 시범 연동 데이터가 고양특례시의회뿐이라 가입 시 기본 소속으로 지정
+  council: text("council").notNull().default("고양특례시의회"),
+  committee: text("committee"),
+  district: text("district"),
   role: memberRoleEnum("role").notNull().default("member"),
   status: memberStatusEnum("status").notNull().default("pending"),
   rejectedReason: text("rejected_reason"),
@@ -34,7 +39,17 @@ export const members = pgTable("members", {
   onboardedAt: timestamp("onboarded_at"),
 });
 
-export const menuEnum = pgEnum("menu", ["laws", "meetings", "budget", "reports"]);
+// 쿠키에는 무작위 토큰을 두고, DB에는 그 SHA-256 해시만 저장 (DB 유출 시 세션 탈취 방지)
+export const sessions = pgTable("sessions", {
+  id: text("id").primaryKey(),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => members.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const menuEnum =pgEnum("menu", ["laws", "meetings", "budget", "reports"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant"]);
 export const trustLevelEnum = pgEnum("trust_level", ["high", "medium", "low"]);
 export const messageKindEnum = pgEnum("message_kind", [

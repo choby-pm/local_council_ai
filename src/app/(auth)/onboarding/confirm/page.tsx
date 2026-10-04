@@ -23,8 +23,8 @@ export default async function OnboardingConfirmPage() {
 
   const fields = [
     { label: "소속 의회", value: member.council },
-    { label: "소속 상임위", value: member.committee },
-    { label: "지역구·비례", value: member.district },
+    { label: "소속 상임위", value: member.committee ?? "미지정" },
+    { label: "지역구·비례", value: member.district ?? "미지정" },
   ];
 
   async function confirm() {
