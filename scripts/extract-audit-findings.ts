@@ -28,7 +28,10 @@ const findingsSchema = z.object({
     z.object({
       department: z.string().describe("피감사 부서명 (보고서 표기 그대로, 예: 도로정책과)"),
       project: z.string().nullable().describe("지적 대상 사업·업무명. 부서 전반에 대한 지적이면 null"),
-      actionType: z.string().nullable().describe("조치 구분 (보고서 표기 그대로, 예: 시정요구, 처리요구, 건의사항)"),
+      // nullable로 두면 실행에 따라 전부 null로 비우는 경우가 있어 필수로 받는다
+      actionType: z
+        .string()
+        .describe("조치 구분. 보고서의 분류 제목 표기 그대로(예: 시정요구, 처리요구, 건의사항). 분류가 전혀 없으면 '구분없음'"),
       finding: z.string().describe("지적 내용. 보고서 문장을 최대한 그대로, 필요하면 2~3문장으로 줄임"),
       request: z.string().nullable().describe("집행부에 요구한 조치 내용. 없으면 null"),
       page: z.number().int().nullable().describe("이 지적이 나오는 PDF 쪽 번호(1부터)"),
@@ -98,8 +101,10 @@ async function extractFindings(post: ReportPost, pdf: Uint8Array) {
   const { output } = await generateText({
     model: google(EXTRACT_MODEL),
     output: Output.object({ schema: findingsSchema }),
-    // 무료 티어는 수요가 몰리면 503(high demand)을 자주 돌려줘 기본(2회)보다 넉넉히 재시도
-    maxRetries: 6,
+    // 무료 티어는 503(high demand)이 잦지만, 재시도도 하루 요청 한도(모델당 20회)를 소모하므로 2회까지만
+    maxRetries: 2,
+    // 같은 보고서를 다시 돌려도 결과가 흔들리지 않도록
+    temperature: 0,
     system:
       "당신은 지방의회 행정사무감사 결과보고서에서 지적사항을 빠짐없이 뽑아 정리하는 도우미입니다. " +
       "보고서에 실제로 적힌 내용만 옮기고, 없는 부서·사업·요구를 지어내지 마세요. " +
@@ -166,7 +171,7 @@ async function main() {
           committee: post.committee,
           department: f.department.trim(),
           project: f.project?.trim() || null,
-          actionType: f.actionType?.trim() || null,
+          actionType: f.actionType.trim() === "구분없음" ? null : f.actionType.trim(),
           finding: f.finding.trim(),
           request: f.request?.trim() || null,
           page: f.page,

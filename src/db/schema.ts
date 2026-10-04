@@ -8,6 +8,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
@@ -33,6 +34,10 @@ export const members = pgTable("members", {
   council: text("council").notNull().default("고양특례시의회"),
   committee: text("committee"),
   district: text("district"),
+  // 마이페이지에서 고른 실제 의원. 지금은 본인 확인 없이 연결(본인 확인 절차는 이후 추가)
+  councilMemberId: uuid("council_member_id").references(() => councilMembers.id, {
+    onDelete: "set null",
+  }),
   role: memberRoleEnum("role").notNull().default("member"),
   status: memberStatusEnum("status").notNull().default("pending"),
   rejectedReason: text("rejected_reason"),
@@ -40,6 +45,27 @@ export const members = pgTable("members", {
   approvedAt: timestamp("approved_at"),
   onboardedAt: timestamp("onboarded_at"),
 });
+
+// 의회 홈페이지에서 수집한 현역 의원 명단(scripts/sync-council-members.ts).
+// 서비스 계정(members)이 이 중 한 명과 연결되면 그 의원의 위원회·선거구로 비서가 맞춰진다.
+export const councilMembers = pgTable(
+  "council_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    council: text("council").notNull(),
+    name: text("name").notNull(),
+    // 의회운영위원은 다른 상임위를 겸하므로 여러 개일 수 있음
+    committees: jsonb("committees").$type<string[]>().notNull().default([]),
+    position: text("position"),
+    district: text("district"),
+    // 선거구가 맡는 동 목록 (예: ["송포동", "덕이동", "가좌동"]) — 지역구 사업 매칭용
+    districtAreas: jsonb("district_areas").$type<string[]>().notNull().default([]),
+    // 의원 개인 홈페이지 코드 (/member/{code}/main.do) — 의회 내 고유 식별자로 사용
+    homepageCode: text("homepage_code").notNull(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("council_members_code_idx").on(t.council, t.homepageCode)]
+);
 
 // 쿠키에는 무작위 토큰을 두고, DB에는 그 SHA-256 해시만 저장 (DB 유출 시 세션 탈취 방지)
 export const sessions = pgTable("sessions", {

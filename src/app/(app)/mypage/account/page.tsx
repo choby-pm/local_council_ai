@@ -1,6 +1,4 @@
-"use client";
-
-import { Info } from "lucide-react";
+import { redirect } from "next/navigation";
 
 import {
   Card,
@@ -11,7 +9,10 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { useMember } from "@/lib/member-context";
+import { getCouncilRoster, getLinkedCouncilMember } from "@/lib/council-members";
+import { getActiveMember } from "@/lib/member";
+
+import { CouncilMemberPicker } from "./council-member-picker";
 
 const statusLabel: Record<string, string> = {
   pending: "승인대기",
@@ -20,38 +21,77 @@ const statusLabel: Record<string, string> = {
   disabled: "비활성화",
 };
 
-export default function MyPageAccountPage() {
-  const member = useMember();
+export default async function MyPageAccountPage() {
+  const member = await getActiveMember();
+  if (!member) redirect("/login");
 
-  const fields = [
+  const [roster, linked] = await Promise.all([
+    getCouncilRoster(member.council),
+    getLinkedCouncilMember(member),
+  ]);
+
+  const accountFields = [
     { label: "이름", value: member.name },
     { label: "아이디", value: member.username ?? "—" },
     { label: "소속 의회", value: member.council },
-    { label: "소속 상임위", value: member.committee ?? "미지정" },
-    { label: "지역구·비례", value: member.district ?? "미지정" },
     { label: "권한", value: member.role === "master" ? "마스터(관리자)" : "일반 의원" },
     { label: "계정 상태", value: statusLabel[member.status] ?? member.status },
   ];
+
+  const councilFields = linked
+    ? [
+        { label: "의원", value: `${linked.name}${linked.position && linked.position !== "의원" ? ` (${linked.position})` : ""}` },
+        { label: "소속 위원회", value: linked.committees.join(", ") || "없음" },
+        { label: "선거구", value: linked.district ?? "—" },
+        { label: "담당 지역", value: linked.districtAreas.join(", ") || "—" },
+      ]
+    : [];
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">계정·소속 정보</h1>
-        <p className="text-sm text-muted-foreground">조회 전용 화면입니다.</p>
-      </div>
-
-      <div className="flex items-start gap-2 rounded-lg border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
-        <Info className="mt-0.5 size-3.5 shrink-0" />
-        소속 의회·상임위·지역구 등 정보 변경은 마스터 계정 승인이 필요합니다. 변경이 필요하면 관리자에게 문의해주세요.
+        <p className="text-sm text-muted-foreground">
+          의원 명단에서 본인을 선택하면 비서가 의원님의 위원회와 지역구에 맞춰집니다.
+        </p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">기본 정보</CardTitle>
-          <CardDescription>가입 시 등록된 정보입니다</CardDescription>
+          <CardTitle className="text-base">의원 정보</CardTitle>
+          <CardDescription>
+            {linked ? "연결된 의원 정보입니다 (의회 홈페이지 기준)" : "아직 연결된 의원이 없습니다"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          {councilFields.length > 0 && (
+            <div className="flex flex-col divide-y">
+              {councilFields.map((f, i) => (
+                <div key={f.label} className={`flex items-center justify-between gap-4 py-3 ${i === 0 ? "pt-0" : ""}`}>
+                  <Label className="shrink-0 text-muted-foreground">{f.label}</Label>
+                  <span className="text-right text-sm font-medium">{f.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <CouncilMemberPicker
+            roster={roster.map((m) => ({
+              id: m.id,
+              name: m.name,
+              district: m.district,
+              committees: m.committees,
+            }))}
+            linkedId={linked?.id ?? null}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">계정 정보</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col divide-y">
-          {fields.map((f, i) => (
+          {accountFields.map((f, i) => (
             <div key={f.label} className={`flex items-center justify-between py-3 ${i === 0 ? "pt-0" : ""}`}>
               <Label className="text-muted-foreground">{f.label}</Label>
               <span className="text-sm font-medium">{f.value}</span>
