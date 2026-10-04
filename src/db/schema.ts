@@ -274,4 +274,28 @@ export const errorQueue = pgTable("error_queue", {
   detectedAt: timestamp("detected_at").notNull().defaultNow(),
 });
 
+// 행정사무감사 결과보고서(PDF)에서 추출한 지적사항 — 위원회·부서별 "작년에 무엇을 지적했나" 조회용.
+// 의회 홈페이지의 소관부서 페이지가 비어 있어, 위원회별 부서 목록도 이 테이블의 department에서 얻는다.
+export const auditFindings = pgTable(
+  "audit_findings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    council: text("council").notNull(),
+    year: integer("year").notNull(),
+    committee: text("committee").notNull(),
+    department: text("department").notNull(),
+    // 지적 대상 사업·업무명 — 부서 전반에 대한 지적이면 없음
+    project: text("project"),
+    // 보고서 표기 그대로(예: 시정요구, 처리요구, 건의사항)
+    actionType: text("action_type"),
+    finding: text("finding").notNull(),
+    request: text("request"),
+    page: integer("page"),
+    sourceTitle: text("source_title").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("audit_findings_scope_idx").on(t.council, t.committee, t.year)]
+);
+
 // MVP 규모(시드 데이터 수십 건)에서는 ANN 인덱스 없이 코사인 유사도 순차 검색(<=>)으로 충분
