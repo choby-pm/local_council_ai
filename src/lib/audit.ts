@@ -7,7 +7,7 @@ import { auditFindings } from "@/db/schema";
 
 export type AuditFinding = typeof auditFindings.$inferSelect;
 
-export type SignalKind = "repeat" | "district" | "corrective" | "budget";
+export type SignalKind = "repeat" | "corrective" | "budget";
 
 export type Signal = {
   kind: SignalKind;
@@ -71,7 +71,7 @@ function isSameIssue(a: AuditFinding, b: AuditFinding): boolean {
 
 const CORRECTIVE = /시정/;
 
-function buildSignals(f: AuditFinding, history: AuditFinding[], districtAreas: string[]): Signal[] {
+function buildSignals(f: AuditFinding, history: AuditFinding[]): Signal[] {
   const signals: Signal[] = [];
 
   if (history.length > 0) {
@@ -81,17 +81,6 @@ function buildSignals(f: AuditFinding, history: AuditFinding[], districtAreas: s
       label: `${years.length + 1}개 연도 반복`,
       detail: `${years.join("·")}년 행감에서도 같은 사업이 지적됨 — 작년 요구가 이행되지 않았을 가능성`,
       weight: 3 * years.length,
-    });
-  }
-
-  const text = `${f.project ?? ""} ${f.finding} ${f.request ?? ""}`;
-  const areas = districtAreas.filter((a) => text.includes(a));
-  if (areas.length > 0) {
-    signals.push({
-      kind: "district",
-      label: "지역구 관련",
-      detail: `의원님 선거구(${areas.join(", ")}) 관련 지적`,
-      weight: 2,
     });
   }
 
@@ -114,7 +103,6 @@ function buildSignals(f: AuditFinding, history: AuditFinding[], districtAreas: s
 export async function getQuestionCandidates(opts: {
   council: string;
   committee: string;
-  districtAreas: string[];
 }): Promise<{ latestYear: number | null; candidates: QuestionCandidate[]; departments: DepartmentSummary[] }> {
   const rows = await getDb()
     .select()
@@ -130,7 +118,7 @@ export async function getQuestionCandidates(opts: {
 
   const candidates = latest.map((finding) => {
     const history = earlier.filter((e) => isSameIssue(finding, e));
-    const signals = buildSignals(finding, history, opts.districtAreas);
+    const signals = buildSignals(finding, history);
     return { finding, history, signals, score: signals.reduce((s, x) => s + x.weight, 0) };
   });
 

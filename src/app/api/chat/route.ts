@@ -6,7 +6,6 @@ import { getDb } from "@/db";
 import { conversations, messages } from "@/db/schema";
 import { runCouncilAgent, type AgentSource, type DocType } from "@/lib/agent";
 import { CHAT_MODEL, classifyAiError, type AiFailure, type TrustLevel } from "@/lib/ai";
-import { getDistrictAreas } from "@/lib/council-members";
 import { getActiveMember, type Member } from "@/lib/member";
 import { getQuestionUsage, isOverLimit } from "@/lib/usage";
 import { isUuid } from "@/lib/utils";
@@ -53,8 +52,7 @@ async function answerQuestion(
   docTypes: DocType[],
   history: ModelMessage[]
 ): Promise<Answer> {
-  const districtAreas = await getDistrictAreas(member.council, member.district);
-  const result = await runCouncilAgent({ member, districtAreas, docTypes, history, question });
+  const result = await runCouncilAgent({ member, docTypes, history, question });
 
   // 인용한 근거가 없으면 답변으로 내보내지 않음 (근거 없는 답변 금지 원칙)
   if (result.sources.length === 0) {

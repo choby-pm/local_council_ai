@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { committeesOf, getCouncilRoster } from "@/lib/council-members";
+import { committeesFor } from "@/lib/committees";
 import { getActiveMember } from "@/lib/member";
 
 import { CommitteePicker } from "./committee-picker";
@@ -25,7 +25,6 @@ export default async function MyPageAccountPage() {
   const member = await getActiveMember();
   if (!member) redirect("/login");
 
-  const roster = await getCouncilRoster(member.council);
 
   const accountFields = [
     { label: "이름", value: member.name },
@@ -54,7 +53,7 @@ export default async function MyPageAccountPage() {
         </CardHeader>
         <CardContent>
           <CommitteePicker
-            committees={committeesOf(roster)}
+            committees={committeesFor(member.council)}
             current={member.committee}
           />
         </CardContent>

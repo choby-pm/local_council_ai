@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getDb } from "@/db";
 import { auditDrafts } from "@/db/schema";
 import { getQuestionCandidates, type QuestionCandidate } from "@/lib/audit";
-import { getDistrictAreas } from "@/lib/council-members";
 import { getActiveMember } from "@/lib/member";
 
 import type { DraftKind } from "./actions";
@@ -94,7 +93,6 @@ export default async function AuditPage() {
   const { latestYear, candidates, departments } = await getQuestionCandidates({
     council: member.council,
     committee,
-    districtAreas: await getDistrictAreas(member.council, member.district),
   });
 
   if (latestYear === null) {
@@ -143,7 +141,7 @@ export default async function AuditPage() {
         <div>
           <h2 className="text-lg font-semibold">올해 다시 물어볼 만한 질의 후보</h2>
           <p className="text-sm text-muted-foreground">
-            여러 해 반복된 지적, 지역구 관련, 시정요구 순으로 우선순위를 매겼습니다.
+            여러 해 반복된 지적, 시정요구 순으로 우선순위를 매겼습니다.
           </p>
         </div>
         {top.map((c, i) => (

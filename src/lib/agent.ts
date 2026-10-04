@@ -32,11 +32,11 @@ export type AgentResult = {
 // 무료 티어는 모델당 하루 요청 수가 적어(결정 D-20) 한 질문의 단계 수를 작게 묶는다
 const MAX_STEPS = 5;
 
-function systemPrompt(member: Member, districtAreas: string[]) {
+function systemPrompt(member: Member) {
   const profile = [
     `의원: ${member.name}`,
     `소속: ${member.council}${member.committee ? ` ${member.committee}` : ""}`,
-    member.district ? `선거구: ${member.district}${districtAreas.length > 0 ? ` (${districtAreas.join(", ")})` : ""}` : null,
+    member.district ? `선거구: ${member.district}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -49,7 +49,7 @@ function systemPrompt(member: Member, districtAreas: string[]) {
     "- 답하기 전에 도구로 근거를 찾으세요. 행정사무감사·지적사항 질문은 getAuditFindings, 의원 발언이나 회의 내용은 searchMinutes → readMinutes, 법령·조례는 searchDocuments를 쓰세요.\n" +
     "- 도구 결과에 있는 내용만 근거로 쓰고, 문장 끝에 도구 결과의 ref 번호를 [1], [2] 형식으로 표기하세요.\n" +
     "- 숫자·날짜·이름을 지어내지 마세요. 찾지 못했으면 찾지 못했다고 말하고, 확인 방법(자료요구 등)을 제안하세요.\n" +
-    "- 특별한 말이 없으면 의원의 위원회와 선거구를 기준으로 범위를 잡으세요.\n" +
+    "- 특별한 말이 없으면 의원의 위원회를 기준으로 범위를 잡으세요.\n" +
     "- 정치적 입장이나 평가는 하지 말고, 판단은 의원에게 맡기세요.\n" +
     "- 한국어로, 의정활동에 바로 쓸 수 있게 간결하게 답하세요."
   );
@@ -61,7 +61,6 @@ function systemPrompt(member: Member, districtAreas: string[]) {
  */
 export async function runCouncilAgent(opts: {
   member: Member;
-  districtAreas: string[];
   docTypes: DocType[];
   history: ModelMessage[];
   question: string;
@@ -202,7 +201,7 @@ export async function runCouncilAgent(opts: {
 
   const { text } = await generateText({
     model: chatModel(),
-    system: systemPrompt(opts.member, opts.districtAreas),
+    system: systemPrompt(opts.member),
     messages: [...opts.history, { role: "user", content: opts.question }],
     tools,
     stopWhen: isStepCount(MAX_STEPS),
