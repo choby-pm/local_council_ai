@@ -52,7 +52,8 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const menuEnum =pgEnum("menu", ["laws", "meetings", "budget", "reports"]);
+// assistant: 통합 AI 비서. laws·meetings·budget·reports는 메뉴 통합 이전 대화 보존용
+export const menuEnum = pgEnum("menu", ["laws", "meetings", "budget", "reports", "assistant"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant"]);
 export const trustLevelEnum = pgEnum("trust_level", ["high", "medium", "low"]);
 export const messageKindEnum = pgEnum("message_kind", [

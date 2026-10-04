@@ -30,7 +30,7 @@ export default async function OnboardingConfirmPage() {
   async function confirm() {
     "use server";
     await markOnboarded();
-    redirect("/onboarding/activity-intro");
+    redirect("/");
   }
 
   return (

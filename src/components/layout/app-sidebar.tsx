@@ -3,21 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
-  Scale,
-  Landmark,
-  Wallet,
-  FileText,
-  User,
-  History,
-  Bookmark,
-  ShieldCheck,
   ClipboardCheck,
   ClipboardList,
-  Users,
-  Server,
-  AlertTriangle,
-  ChevronRight,
+  Landmark,
+  LayoutDashboard,
+  MessageSquareText,
+  ShieldCheck,
+  User,
 } from "lucide-react";
 
 import {
@@ -31,34 +23,32 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
 import type { Member } from "@/lib/member";
 
+// 법령·조례와 회의·안건은 같은 에이전트가 도구를 골라 답하므로 "AI 비서" 하나로 합쳤다.
+// 동작하지 않던 목업 메뉴(예산·결산, 의정활동 보고서, 활동이력, 저장한 자료함, 관리자 콘솔 일부)는 제거.
 const mainNav = [
   { title: "대시보드", url: "/", icon: LayoutDashboard },
   { title: "행정사무감사 준비", url: "/audit", icon: ClipboardList },
-  { title: "법령·조례 검색", url: "/laws", icon: Scale },
-  { title: "회의·안건", url: "/meetings", icon: Landmark },
-  { title: "예산·결산", url: "/budget", icon: Wallet },
-  { title: "의정활동 보고서", url: "/reports", icon: FileText },
+  { title: "AI 비서", url: "/assistant", icon: MessageSquareText },
 ];
 
-const myPageNav = [
-  { title: "계정·소속 정보", url: "/mypage/account", icon: User },
-  { title: "활동이력 관리", url: "/mypage/history", icon: History },
-  { title: "저장한 자료함", url: "/mypage/saved", icon: Bookmark },
-];
+const adminNav = [{ title: "가입 승인", url: "/admin/approvals", icon: ClipboardCheck }];
 
-const adminNav = [
-  { title: "가입 승인 대기열", url: "/admin/approvals", icon: ClipboardCheck },
-  { title: "계정 관리", url: "/admin/accounts", icon: Users },
-  { title: "배치 모니터링", url: "/admin/batches", icon: Server },
-  { title: "오류·재처리 큐", url: "/admin/errors", icon: AlertTriangle },
-];
+function NavItem({ item, active }: { item: (typeof mainNav)[number]; active: boolean }) {
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild isActive={active} tooltip={item.title}>
+        <Link href={item.url}>
+          <item.icon />
+          <span>{item.title}</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
 
 export function AppSidebar({ member }: { member: Member }) {
   const pathname = usePathname();
@@ -91,18 +81,7 @@ export function AppSidebar({ member }: { member: Member }) {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNav.map((item) => (
-                <SidebarMenuItem key={item.url}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={pathname === item.url}
-                    tooltip={item.title}
-                  >
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                <NavItem key={item.url} item={item} active={pathname === item.url} />
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
@@ -112,26 +91,12 @@ export function AppSidebar({ member }: { member: Member }) {
           <SidebarGroup>
             <SidebarGroupLabel className="flex items-center gap-1.5">
               <ShieldCheck className="size-3.5" />
-              관리자 콘솔
-              <span className="ml-auto rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                관리자 전용
-              </span>
+              관리자
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {adminNav.map((item) => (
-                  <SidebarMenuItem key={item.url}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={pathname === item.url}
-                      tooltip={item.title}
-                    >
-                      <Link href={item.url}>
-                        <item.icon />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  <NavItem key={item.url} item={item} active={pathname === item.url} />
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
@@ -141,27 +106,10 @@ export function AppSidebar({ member }: { member: Member }) {
 
       <SidebarFooter>
         <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={pathname.startsWith("/mypage")}>
-              <Link href="/mypage/account">
-                <User />
-                <span>마이페이지</span>
-                <ChevronRight className="ml-auto size-4" />
-              </Link>
-            </SidebarMenuButton>
-            <SidebarMenuSub>
-              {myPageNav.map((item) => (
-                <SidebarMenuSubItem key={item.url}>
-                  <SidebarMenuSubButton asChild isActive={pathname === item.url}>
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              ))}
-            </SidebarMenuSub>
-          </SidebarMenuItem>
+          <NavItem
+            item={{ title: "마이페이지", url: "/mypage/account", icon: User }}
+            active={pathname.startsWith("/mypage")}
+          />
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />

@@ -95,7 +95,7 @@ export function ChatThread({
   onConversationCreated,
   autoSendQuestion,
 }: {
-  menu: "laws" | "meetings" | "budget";
+  menu: "laws" | "meetings" | "budget" | "assistant";
   conversationId: string | null;
   initialMessages: DbMessage[];
   placeholder: string;

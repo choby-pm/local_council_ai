@@ -6,7 +6,7 @@ import { ChatThread, type DbMessage } from "@/components/chat/chat-thread";
 import { ConversationList, type ConversationItem } from "@/components/chat/conversation-list";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type Menu = "laws" | "meetings" | "budget";
+type Menu = "laws" | "meetings" | "budget" | "assistant";
 
 type ApiConversation = { id: string; title: string; updatedAt: string };
 type ApiMessage = {

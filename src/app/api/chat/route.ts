@@ -14,6 +14,8 @@ const MENU_DOC_TYPES: Record<string, DocType[]> = {
   laws: ["law", "ordinance"],
   meetings: ["meeting"],
   budget: ["budget"],
+  // 통합 AI 비서: 모든 문서 유형을 검색 대상으로 두고 에이전트가 도구로 고른다
+  assistant: ["law", "ordinance", "meeting", "budget"],
 };
 
 // 질문 1건이 프롬프트 토큰을 과도하게 쓰지 않도록 길이 제한
@@ -109,16 +111,12 @@ export async function POST(req: NextRequest) {
   const db = getDb();
 
   if (conversationId) {
-    // 요청 본문의 conversationId는 신뢰할 수 없음 — 본인 소유이며 같은 메뉴의 대화인지 확인
+    // 요청 본문의 conversationId는 신뢰할 수 없음 — 본인 소유인지 확인 (통합 비서에서 이전 메뉴의 대화도 이어갈 수 있음)
     const [owned] = await db
       .select({ id: conversations.id })
       .from(conversations)
       .where(
-        and(
-          eq(conversations.id, conversationId),
-          eq(conversations.memberId, member.id),
-          eq(conversations.menu, menu as "laws" | "meetings" | "budget")
-        )
+        and(eq(conversations.id, conversationId), eq(conversations.memberId, member.id))
       );
     if (!owned) {
       return NextResponse.json({ error: "대화를 찾을 수 없습니다" }, { status: 404 });
@@ -128,7 +126,7 @@ export async function POST(req: NextRequest) {
       .insert(conversations)
       .values({
         memberId: member.id,
-        menu: menu as "laws" | "meetings" | "budget" | "reports",
+        menu: menu as "laws" | "meetings" | "budget" | "assistant",
         title: question.slice(0, 40),
       })
       .returning();

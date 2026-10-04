@@ -15,23 +15,19 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-const quickPrompts: { text: string; menu: "laws" | "meetings" | "budget" }[] = [
-  { text: "이번 회기 상정 안건 요약해줘", menu: "meetings" },
-  { text: "최근 개정된 조례 알려줘", menu: "laws" },
-  { text: "우리 의회 예산 이상 증감 항목 찾아줘", menu: "budget" },
+const quickPrompts = [
+  "우리 위원회에서 작년 행정사무감사 때 지적된 사항 정리해줘",
+  "최근 처리된 조례안 결과 알려줘",
+  "버스 준공영제 관련 회의록 발언 찾아줘",
 ];
 
 export function DashboardAsk() {
   const router = useRouter();
   const [draft, setDraft] = useState("");
 
-  function goToSearch(menu: "laws" | "meetings" | "budget", question: string) {
+  function ask(question: string) {
     if (!question.trim()) return;
-    router.push(`/${menu}?q=${encodeURIComponent(question.trim())}`);
-  }
-
-  function handleSend() {
-    goToSearch("laws", draft);
+    router.push(`/assistant?q=${encodeURIComponent(question.trim())}`);
   }
 
   return (
@@ -42,7 +38,7 @@ export function DashboardAsk() {
           무엇을 도와드릴까요?
         </CardTitle>
         <CardDescription>
-          법령·조례, 회의·안건, 예산·결산, 의정활동 보고서 — 원하시는 주제를 바로 질문해보세요.
+          법령·조례, 회의록, 행정사무감사 지적사항을 찾아 출처와 함께 답합니다.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
@@ -50,11 +46,11 @@ export function DashboardAsk() {
           <Input
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="예: 최근 3년간 청년 주거 지원 조례 제정 현황 알려줘"
+            onKeyDown={(e) => e.key === "Enter" && ask(draft)}
+            placeholder="예: 상하수도사업소가 작년에 지적받은 내용 알려줘"
             className="h-11"
           />
-          <Button size="icon" className="h-11 w-11 shrink-0" onClick={handleSend} disabled={!draft.trim()}>
+          <Button size="icon" className="h-11 w-11 shrink-0" onClick={() => ask(draft)} disabled={!draft.trim()}>
             <SendHorizonal />
             <span className="sr-only">질문 보내기</span>
           </Button>
@@ -62,12 +58,12 @@ export function DashboardAsk() {
         <div className="flex flex-wrap gap-2">
           {quickPrompts.map((prompt) => (
             <Badge
-              key={prompt.text}
+              key={prompt}
               variant="secondary"
               className="cursor-pointer px-3 py-1.5 font-normal hover:bg-secondary/70"
-              onClick={() => goToSearch(prompt.menu, prompt.text)}
+              onClick={() => ask(prompt)}
             >
-              {prompt.text}
+              {prompt}
             </Badge>
           ))}
         </div>

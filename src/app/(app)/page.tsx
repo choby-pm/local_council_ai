@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
-import { AlertTriangle, ArrowUpRight, Calendar, CalendarClock, FileText } from "lucide-react";
+import { ArrowUpRight, Calendar, ClipboardList, FileText } from "lucide-react";
 
 import { getDb } from "@/db";
-import { documents, reports } from "@/db/schema";
+import { documents } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,14 +15,10 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { getActiveMember, type Member } from "@/lib/member";
-import { getQuarterReportDeadline } from "@/lib/report-deadline";
-import { cn } from "@/lib/utils";
 
 import { DashboardAsk } from "./dashboard-ask";
 
 const NEWS_LIMIT = 3;
-// 마감이 이 일수 이내로 다가오면 경고 톤으로 표시
-const DEADLINE_WARNING_DAYS = 7;
 
 type NewsItem = { id: string; title: string; meta: string; excerpt: string | null };
 
@@ -67,60 +63,37 @@ export default async function DashboardPage() {
   // (app) 레이아웃이 비활성 회원을 리다이렉트하지만, 페이지는 레이아웃과 병렬 렌더링되므로 여기서도 확인
   if (!member) return null;
 
-  const deadline = getQuarterReportDeadline();
-  const [agendaNews, meetingNews, [finishedReport]] = await Promise.all([
+  const [agendaNews, meetingNews] = await Promise.all([
     getDocumentNews(member, ["ordinance"]),
     getDocumentNews(member, ["meeting", "budget"]),
-    getDb()
-      .select({ id: reports.id })
-      .from(reports)
-      .where(
-        and(
-          eq(reports.memberId, member.id),
-          eq(reports.periodLabel, deadline.periodLabel),
-          eq(reports.status, "완료")
-        )
-      )
-      .limit(1),
   ]);
-
-  const urgent = deadline.daysLeft <= DEADLINE_WARNING_DAYS;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">안녕하세요, {member.name} 의원님</h1>
         <p className="text-sm text-muted-foreground">
-          오늘 확인이 필요한 소식과 마감 일정을 정리했습니다.
+          오늘 확인이 필요한 소식과 행정사무감사 준비 현황을 정리했습니다.
         </p>
       </div>
 
-      {!finishedReport && (
-        <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
-          {urgent ? (
-            <AlertTriangle className="size-4 shrink-0 text-destructive" />
-          ) : (
-            <CalendarClock className="size-4 shrink-0 text-muted-foreground" />
-          )}
-          <div className="flex-1">
-            <p className="text-sm font-medium">
-              {deadline.periodLabel} 의정활동 보고서 마감까지{" "}
-              <span className={cn(urgent && "text-destructive")}>
-                {deadline.daysLeft === 0 ? "D-Day" : `D-${deadline.daysLeft}`}
-              </span>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              마감일 {deadline.deadline} · 누적된 활동이력을 기반으로 초안을 생성할 수 있습니다.
-            </p>
-          </div>
-          <Button asChild size="sm" variant="outline" className="shrink-0">
-            <Link href="/reports">
-              초안 작성하러 가기
-              <ArrowUpRight />
-            </Link>
-          </Button>
+      <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
+        <ClipboardList className="size-4 shrink-0 text-muted-foreground" />
+        <div className="flex-1">
+          <p className="text-sm font-medium">행정사무감사 준비</p>
+          <p className="text-xs text-muted-foreground">
+            {member.committee
+              ? `${member.committee} 소관 부서의 작년 지적사항 중 다시 물어볼 만한 질의 후보를 정리했습니다.`
+              : "마이페이지에서 소속 상임위를 고르면 위원회에 맞춘 질의 후보를 정리해 드립니다."}
+          </p>
         </div>
-      )}
+        <Button asChild size="sm" variant="outline" className="shrink-0">
+          <Link href={member.committee ? "/audit" : "/mypage/account"}>
+            {member.committee ? "질의 후보 보기" : "상임위 선택하기"}
+            <ArrowUpRight />
+          </Link>
+        </Button>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <NewsCard
