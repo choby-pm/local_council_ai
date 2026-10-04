@@ -40,6 +40,10 @@ function resolveChatModelId(): ChatModelId {
 
 export const CHAT_MODEL = resolveChatModelId();
 
+export function chatModel() {
+  return registry.languageModel(CHAT_MODEL);
+}
+
 // 임베딩 모델은 교체 대상이 아님 — 바꾸면 저장된 document_chunks 임베딩을 전부 다시 만들어야 하고
 // 차원(1536)도 스키마와 맞아야 한다. 시드 스크립트(seed-documents.ts)와 반드시 같은 모델을 써야 함.
 export const EMBEDDING_MODEL = "gemini-embedding-001";

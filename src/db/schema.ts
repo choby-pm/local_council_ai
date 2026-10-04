@@ -324,4 +324,25 @@ export const auditFindings = pgTable(
   (t) => [index("audit_findings_scope_idx").on(t.council, t.committee, t.year)]
 );
 
+// 의원이 지적사항 카드에서 만든 질의서·자료요구서 초안. 의원별로 저장해 다시 열 때 AI를 다시 부르지 않는다.
+export const auditDraftKindEnum = pgEnum("audit_draft_kind", ["question", "data_request"]);
+
+export const auditDrafts = pgTable(
+  "audit_drafts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    findingId: uuid("finding_id")
+      .notNull()
+      .references(() => auditFindings.id, { onDelete: "cascade" }),
+    kind: auditDraftKindEnum("kind").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("audit_drafts_member_finding_kind_idx").on(t.memberId, t.findingId, t.kind)]
+);
+
 // MVP 규모(시드 데이터 수십 건)에서는 ANN 인덱스 없이 코사인 유사도 순차 검색(<=>)으로 충분

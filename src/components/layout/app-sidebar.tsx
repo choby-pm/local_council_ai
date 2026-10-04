@@ -13,6 +13,7 @@ import {
   Bookmark,
   ShieldCheck,
   ClipboardCheck,
+  ClipboardList,
   Users,
   Server,
   AlertTriangle,
@@ -39,6 +40,7 @@ import type { Member } from "@/lib/member";
 
 const mainNav = [
   { title: "대시보드", url: "/", icon: LayoutDashboard },
+  { title: "행정사무감사 준비", url: "/audit", icon: ClipboardList },
   { title: "법령·조례 검색", url: "/laws", icon: Scale },
   { title: "회의·안건", url: "/meetings", icon: Landmark },
   { title: "예산·결산", url: "/budget", icon: Wallet },
