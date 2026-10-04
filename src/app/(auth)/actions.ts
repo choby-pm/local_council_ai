@@ -50,18 +50,15 @@ export async function signup(_prev: AuthFormState, formData: FormData): Promise<
 
   const { name, username, password } = parsed.data;
   const db = getDb();
-  const now = new Date();
 
-  // MVP: 승인·온보딩 절차 없이 가입 즉시 사용 가능 (인증 고도화 시 재도입)
+  // 가입 신청 → 관리자 승인 → 이용 가능. 관리자가 실제 의원인지 확인하는 단계로 본인 확인을 대신한다 (결정 D-21)
   const [member] = await db
     .insert(members)
     .values({
       username,
       passwordHash: await hashPassword(password),
       name,
-      status: "active",
-      approvedAt: now,
-      onboardedAt: now,
+      status: "pending",
     })
     .onConflictDoNothing({ target: members.username })
     .returning({ id: members.id });
@@ -70,8 +67,9 @@ export async function signup(_prev: AuthFormState, formData: FormData): Promise<
     return { fieldErrors: { username: "이미 사용 중인 아이디입니다" }, values };
   }
 
+  // 로그인 상태로 두면 승인대기 화면에서 진행 상황을 볼 수 있다
   await createSession(member.id);
-  redirect("/");
+  redirect("/pending-approval");
 }
 
 // 존재하지 않는 아이디에도 같은 시간만큼 해시 비교를 수행해 응답 시간으로 아이디 존재 여부가 드러나지 않게 함

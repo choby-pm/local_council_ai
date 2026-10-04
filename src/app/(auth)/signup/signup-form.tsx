@@ -25,7 +25,7 @@ export function SignupForm() {
     <Card>
       <CardHeader>
         <CardTitle>회원가입</CardTitle>
-        <CardDescription>이름과 아이디, 비밀번호만 입력하면 바로 이용할 수 있습니다</CardDescription>
+        <CardDescription>의원 실명과 아이디, 비밀번호로 가입을 신청하면 관리자 확인 후 이용할 수 있습니다</CardDescription>
       </CardHeader>
       <form action={action}>
         <CardContent className="flex flex-col gap-4">

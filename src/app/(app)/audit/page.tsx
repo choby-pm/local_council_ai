@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getDb } from "@/db";
 import { auditDrafts } from "@/db/schema";
 import { getQuestionCandidates, type QuestionCandidate } from "@/lib/audit";
-import { getLinkedCouncilMember } from "@/lib/council-members";
+import { getDistrictAreas } from "@/lib/council-members";
 import { getActiveMember } from "@/lib/member";
 
 import type { DraftKind } from "./actions";
@@ -57,7 +57,6 @@ export default async function AuditPage() {
   const member = await getActiveMember();
   if (!member) redirect("/login");
 
-  const linked = await getLinkedCouncilMember(member);
   const committee = member.committee;
 
   const header = (
@@ -95,7 +94,7 @@ export default async function AuditPage() {
   const { latestYear, candidates, departments } = await getQuestionCandidates({
     council: member.council,
     committee,
-    districtAreas: linked?.districtAreas ?? [],
+    districtAreas: await getDistrictAreas(member.council, member.district),
   });
 
   if (latestYear === null) {
@@ -133,9 +132,9 @@ export default async function AuditPage() {
         <span>
           이전 연도에도 지적된 사업 <strong>{repeatTotal}건</strong>
         </span>
-        {linked?.district && (
+        {member.district && (
           <span>
-            지역구 <strong>{linked.district}</strong>
+            지역구 <strong>{member.district}</strong>
           </span>
         )}
       </div>

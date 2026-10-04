@@ -7,7 +7,6 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { auditFindings, documentChunks, documents } from "@/db/schema";
 import { chatModel, embedQuery } from "@/lib/ai";
-import type { CouncilMember } from "@/lib/council-members";
 import { readMinutesExcerpts, searchMinutes } from "@/lib/goyang-council";
 import type { Member } from "@/lib/member";
 
@@ -33,11 +32,11 @@ export type AgentResult = {
 // 무료 티어는 모델당 하루 요청 수가 적어(결정 D-20) 한 질문의 단계 수를 작게 묶는다
 const MAX_STEPS = 5;
 
-function systemPrompt(member: Member, linked: CouncilMember | null) {
+function systemPrompt(member: Member, districtAreas: string[]) {
   const profile = [
-    `의원: ${linked?.name ?? member.name}`,
+    `의원: ${member.name}`,
     `소속: ${member.council}${member.committee ? ` ${member.committee}` : ""}`,
-    linked?.district ? `선거구: ${linked.district} (${linked.districtAreas.join(", ")})` : null,
+    member.district ? `선거구: ${member.district}${districtAreas.length > 0 ? ` (${districtAreas.join(", ")})` : ""}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -62,7 +61,7 @@ function systemPrompt(member: Member, linked: CouncilMember | null) {
  */
 export async function runCouncilAgent(opts: {
   member: Member;
-  linked: CouncilMember | null;
+  districtAreas: string[];
   docTypes: DocType[];
   history: ModelMessage[];
   question: string;
@@ -203,7 +202,7 @@ export async function runCouncilAgent(opts: {
 
   const { text } = await generateText({
     model: chatModel(),
-    system: systemPrompt(opts.member, opts.linked),
+    system: systemPrompt(opts.member, opts.districtAreas),
     messages: [...opts.history, { role: "user", content: opts.question }],
     tools,
     stopWhen: isStepCount(MAX_STEPS),

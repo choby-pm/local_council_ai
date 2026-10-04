@@ -9,11 +9,10 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { committeesOf, getCouncilRoster, getLinkedCouncilMember } from "@/lib/council-members";
+import { committeesOf, getCouncilRoster } from "@/lib/council-members";
 import { getActiveMember } from "@/lib/member";
 
 import { CommitteePicker } from "./committee-picker";
-import { CouncilMemberPicker } from "./council-member-picker";
 
 const statusLabel: Record<string, string> = {
   pending: "승인대기",
@@ -26,10 +25,7 @@ export default async function MyPageAccountPage() {
   const member = await getActiveMember();
   if (!member) redirect("/login");
 
-  const [roster, linked] = await Promise.all([
-    getCouncilRoster(member.council),
-    getLinkedCouncilMember(member),
-  ]);
+  const roster = await getCouncilRoster(member.council);
 
   const accountFields = [
     { label: "이름", value: member.name },
@@ -39,53 +35,14 @@ export default async function MyPageAccountPage() {
     { label: "계정 상태", value: statusLabel[member.status] ?? member.status },
   ];
 
-  const councilFields = linked
-    ? [
-        { label: "의원", value: `${linked.name}${linked.position && linked.position !== "의원" ? ` (${linked.position})` : ""}` },
-        { label: "소속 위원회", value: linked.committees.join(", ") || "없음" },
-        { label: "선거구", value: linked.district ?? "—" },
-        { label: "담당 지역", value: linked.districtAreas.join(", ") || "—" },
-      ]
-    : [];
-
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">계정·소속 정보</h1>
         <p className="text-sm text-muted-foreground">
-          의원 명단에서 본인을 선택하면 비서가 의원님의 위원회와 지역구에 맞춰집니다.
+          소속 상임위를 고르면 비서가 의원님 위원회의 감사 대상 부서에 맞춰 준비합니다.
         </p>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">의원 정보</CardTitle>
-          <CardDescription>
-            {linked ? "연결된 의원 정보입니다 (의회 홈페이지 기준)" : "아직 연결된 의원이 없습니다"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          {councilFields.length > 0 && (
-            <div className="flex flex-col divide-y">
-              {councilFields.map((f, i) => (
-                <div key={f.label} className={`flex items-center justify-between gap-4 py-3 ${i === 0 ? "pt-0" : ""}`}>
-                  <Label className="shrink-0 text-muted-foreground">{f.label}</Label>
-                  <span className="text-right text-sm font-medium">{f.value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          <CouncilMemberPicker
-            roster={roster.map((m) => ({
-              id: m.id,
-              name: m.name,
-              district: m.district,
-              committees: m.committees,
-            }))}
-            linkedId={linked?.id ?? null}
-          />
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>
@@ -99,7 +56,6 @@ export default async function MyPageAccountPage() {
           <CommitteePicker
             committees={committeesOf(roster)}
             current={member.committee}
-            linkedCommittees={linked?.committees ?? []}
           />
         </CardContent>
       </Card>

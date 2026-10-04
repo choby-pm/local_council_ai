@@ -34,7 +34,7 @@ export const members = pgTable("members", {
   council: text("council").notNull().default("고양특례시의회"),
   committee: text("committee"),
   district: text("district"),
-  // 마이페이지에서 고른 실제 의원. 지금은 본인 확인 없이 연결(본인 확인 절차는 이후 추가)
+  // 사용하지 않음: 의원 명단 연결 기능은 가입 승인 방식으로 대체됨 (결정 D-21). 기존 데이터 보존용으로 칸만 유지
   councilMemberId: uuid("council_member_id").references(() => councilMembers.id, {
     onDelete: "set null",
   }),

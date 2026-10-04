@@ -17,12 +17,9 @@ import { setCommittee } from "./actions";
 export function CommitteePicker({
   committees,
   current,
-  linkedCommittees,
 }: {
   committees: string[];
   current: string | null;
-  // 연결된 의원이 실제로 속한 위원회 — 목록에 표시만 하고 다른 위원회도 고를 수 있음
-  linkedCommittees: string[];
 }) {
   const [selected, setSelected] = useState(current ?? "");
   const [pending, startTransition] = useTransition();
@@ -45,7 +42,6 @@ export function CommitteePicker({
           {committees.map((c) => (
             <SelectItem key={c} value={c}>
               {c}
-              {linkedCommittees.includes(c) && <span className="text-muted-foreground"> · 연결된 의원 소속</span>}
             </SelectItem>
           ))}
         </SelectContent>
