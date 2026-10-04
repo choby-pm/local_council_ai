@@ -1,36 +1,183 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 지방의회 AI 비서
 
-## Getting Started
+> 정치·법·재정을 전문으로 하지 않는 기초의원이 **첫 행정사무감사를 혼자서도 준비할 수 있게** 돕는 의정활동 도구
 
-First, run the development server:
+과거 회의록, 예산, 조례를 근거로 "이 부서에서 무엇을 확인해야 하는지" 짚어 주고, 출처가 달린 질의서 초안까지 만들어 줍니다. 무엇을 물을지는 의원이 정합니다.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **데모**: [localcouncilai.vercel.app](https://localcouncilai.vercel.app)
+- **대상**: 기초의회 의원과 정책지원관 (시범 의회: 고양특례시의회)
+- **현재 단계**: v0(법령·조례·회의록 근거 검색 채팅) 운영 중 · v1(행정사무감사 준비) 설계 중
+
+---
+
+## 해결하려는 문제
+
+비전문가인 초선 기초의원은 첫 행정사무감사에서 **무엇을 봐야 하고 무엇을 물어야 하는지** 몰라, 집행부 자료에 끌려가거나 준비에 시간을 지나치게 많이 씁니다.
+
+이 문제는 지금 특히 큽니다.
+
+- **새 의회가 막 시작됐습니다.** 2026년 6월 3일 지방선거 후 7월부터 새 임기가 시작됐고, 전북 사례를 보면 기초의회 당선자의 36~50%가 초선입니다. ([전북일보](https://jjan.kr/article/20260622500231))
+- **첫 행감이 곧 열립니다.** 고양특례시의회는 11월 제2차 정례회에서 2026년도 행정사무감사를 엽니다. ([위키트리](https://www.wikitree.co.kr/articles/1156829))
+- **행감 다음 일정이 줄줄이 있습니다.** 행감 다음에는 연말 본예산 심사가, 그다음에는 의정활동 보고서 작성이 기다립니다.
+
+```
+7월 임기 시작 → 11월 첫 행정사무감사 → 연말 첫 본예산 심사 → 이후 의정활동 보고서
 ```
 
-Open [localcouncilai.vercel.app](https://localcouncilai.vercel.app/pending-approval) with your browser to see the result.
+행감 준비에서 막히는 지점은 세 가지로 봅니다 (가설, [Discovery](docs/02-discovery.md)에서 검증 중).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. **맥락 부족**: 이 부서가 작년에 무엇을 지적받았고 고쳤는지 모릅니다.
+2. **해석 부족**: 예산 숫자와 조례 조문을 봐도 어디가 문제인지 판단하기 어렵습니다.
+3. **작성 부담**: 근거를 모아 질의서 형태로 정리하는 데 시간이 많이 듭니다.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+그래서 이 서비스의 목표는 검색 도구가 아니라 **코치형 도구**입니다. 조문을 찾아주는 데서 멈추지 않고, 쉬운 말로 설명하고, 확인할 점을 먼저 짚고, 실제 결과물의 초안을 만듭니다.
 
-## Learn More
+## 누구를 위한 서비스인가
 
-To learn more about Next.js, take a look at the following resources:
+| 역할 | 누구 | 필요한 것 |
+| --- | --- | --- |
+| 주 사용자 | 초선 기초의원 | 쉬운 설명, 확인할 점, 바로 쓸 수 있는 질의서 초안 |
+| 실제 작업자 | 정책지원관 | 자료 수집·분석 시간 단축, 여러 의원의 요청 동시 처리 |
+| 도입 결정 | 의회사무국·의장단 | 비용, 효과의 근거, 운영 부담 |
+| 보안 검토 | 정보보안·개인정보 담당 | 외부 AI로 나가는 데이터 범위, 로그, 공공 클라우드 기준 |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 어떻게 만들고 있나
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+기능 목록에서 출발하지 않습니다. **사용자의 실제 업무 하나를 골라 끝까지 해결하는 방식**으로 만듭니다. 고객 현장에 배치된 엔지니어(Forward Deployed Engineer)가 문제를 푸는 절차를 따릅니다.
 
-## Deploy on Vercel
+| # | 단계 | 하는 일 | 상태 | 문서 |
+| --- | --- | --- | --- | --- |
+| 1 | 고객 구조 파악 | 누가 쓰고, 누가 도입을 결정하고, 누가 막을 수 있는지 구분 | 완료 | [문제 정의](docs/01-problem-definition.md) |
+| 2 | Discovery | 업무 흐름과 산출물 수집. 사용자 접근이 불가능해 공개 자료로 대체 | 진행 중 | [Discovery](docs/02-discovery.md) |
+| 3 | 핵심 업무 선정 | 행감·예산·보고서 중 행정사무감사 준비를 선택 | 완료 | [문제 정의](docs/01-problem-definition.md#핵심-업무-선정) |
+| 4 | 데이터·연동 설계 | 쓸 수 있는 데이터와 제약 확인, 유형별 조회 방식 결정 | 진행 중 | [데이터와 구조](docs/03-data-and-architecture.md) |
+| 5 | 프로토타입·평가 | 행감 준비 흐름 하나를 끝까지 구현, 평가 세트로 점검 | 예정 | |
+| 6 | 운영 배포·측정 | 보안·비용·장애 대응, 준비 시간과 초안 채택률 측정 | 예정 | |
+| 7 | 제품화 | 고양시 전용 부분과 다른 의회에도 쓸 수 있는 부분 분리 | 예정 | |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 핵심 기능: 행정사무감사 준비 (v1)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| 단계 | AI가 하는 일 | 의원이 하는 일 |
+| --- | --- | --- |
+| 1. 대상 선택 | 소속 상임위 소관 부서 목록 제시 | 감사할 부서·사업 선택 |
+| 2. 작년 지적사항 | 과거 행감 회의록·시정요구에서 지적사항과 이행 여부 정리 | 다시 물을 항목 고르기 |
+| 3. 예산·집행 변화 | 전년 대비 크게 바뀐 사업과 집행률을 표로 제시 (계산은 코드가 함) | 의심스러운 변화 판단 |
+| 4. 근거 설명 | 관련 조례·법령을 쉬운 말로 설명 | 이해하고 필요하면 더 묻기 |
+| 5. 질의 포인트 | 근거가 달린 질의 후보 제안 | 질의할 항목과 방향 결정 |
+| 6. 질의서 초안 | 고른 항목으로 질의서 초안 작성 | 수정·확정 후 내보내기 |
+
+## 데이터와 기술 설계
+
+모든 데이터를 미리 모아 벡터 검색(RAG)으로 찾는 대신, **데이터 유형마다 맞는 조회 방식을 골라 도구(tool)로 만들고, AI 에이전트가 필요한 도구를 골라 호출**합니다. 시범 의회가 별도 API를 제공하지 않아 데이터를 전부 미리 쌓기 어렵고, 법령처럼 자주 바뀌는 자료는 미리 쌓아두면 금방 낡기 때문입니다.
+
+```mermaid
+flowchart LR
+    U[의원·정책지원관] --> A[AI 에이전트<br/>도구 호출 루프]
+    A --> V[인용 검증<br/>근거 부족 시 답변불가]
+    V --> R[질의서 초안<br/>문장마다 출처]
+    A -.-> T1[법령 조회<br/>국가법령정보 API]
+    A -.-> T2[회의록 검색<br/>벡터 지연 색인]
+    A -.-> T3[지적사항 조회<br/>행감 결과 DB]
+    A -.-> T4[예산 계산<br/>SQL 계산 도구]
+    A -.-> T5[활동이력 조회<br/>서비스 DB]
+```
+
+| 데이터 | 조회 방식 | 이유 |
+| --- | --- | --- |
+| 법령·자치법규 | 실시간 API 도구 + 응답 캐시 | 항상 최신 시행본, 조문 번호로 정확히 인용 |
+| 예산·결산 | 표 형태로 DB에 저장 + SQL·계산 도구 | 숫자는 임베딩 검색과 맞지 않고, 계산은 코드가 해야 정확 |
+| 회의록 | API로 후보 검색 → 가져온 회의록만 그때 색인(RAG) | 길고 비정형이라 의미 검색이 필요. 질문받은 만큼 데이터가 쌓임 |
+| 행감 지적사항 | 결과보고서에서 추출해 구조화 | 부서별 조회와 연도 비교가 핵심 |
+| 의원 활동이력 | 서비스 DB 직접 조회 | 이미 구조화된 내부 데이터 |
+
+자세한 결정 과정은 [데이터와 구조](docs/03-data-and-architecture.md)에 있습니다.
+
+**기술 스택**: Next.js 16 (App Router) · Vercel AI SDK · Neon Postgres + pgvector · Drizzle ORM · shadcn/ui · Vercel
+
+## 신뢰 원칙
+
+의원이 틀린 근거로 집행부에 질의하면 신뢰를 잃습니다. 그래서 답을 많이 내는 것보다 틀리지 않는 것을 우선합니다.
+
+- **모든 내용에 출처**: 문장마다 `[1]` 형식으로 근거를 달고, 누르면 원문으로 이동합니다.
+- **근거가 부족하면 답하지 않음**: "답변불가"로 표시하고 원문 링크만 줍니다. "결과 없음"과는 다른 상태로 보여줍니다.
+- **인용 검증** *(v1 예정)*: 인용 번호가 실제 근거 문장과 맞는지 한 번 더 확인합니다.
+- **숫자는 코드가 계산**: AI는 계산 결과를 설명만 합니다.
+- **판단은 사람이**: AI는 근거와 초안까지, 무엇을 물을지는 의원이 정합니다.
+- **피드백으로 개선**: 답변별 좋아요·싫어요와 그 사유를 기록해 오류율을 잽니다.
+
+## 사용 방법
+
+### 사용자
+
+1. [데모 사이트](https://localcouncilai.vercel.app)에서 아이디·비밀번호로 가입하고 소속 의회·상임위를 확인합니다.
+2. 대시보드에서 소속 의회의 최신 조례안·회의록과 보고서 마감일을 확인합니다.
+3. **법령·조례 검색**, **회의·안건** 메뉴에서 질문하면 출처가 달린 답변을 받습니다. 하루 질문 수에는 한도(기본 50회)가 있습니다.
+4. **행정사무감사 준비** 메뉴에서 부서를 고르면 확인할 점과 질의서 초안을 받습니다. *(v1에서 추가 예정)*
+
+### 로컬 실행
+
+필요한 것: Node.js 22 이상, [Neon](https://neon.tech) Postgres DB, [Google AI Studio](https://aistudio.google.com) API 키
+
+```bash
+npm install
+
+# .env.local 작성 (아래 환경변수 참고)
+
+# DB 준비: pgvector 확장 → 스키마 반영 → 시범 데이터 적재
+npx dotenv -e .env.local -- npx tsx scripts/enable-extensions.ts
+npx dotenv -e .env.local -- npx drizzle-kit push
+npx dotenv -e .env.local -- npx tsx scripts/seed-documents.ts
+
+npm run dev
+```
+
+가입한 뒤 관리자 권한이 필요하면 다음을 실행합니다.
+
+```bash
+npx dotenv -e .env.local -- npx tsx scripts/promote-master.ts <아이디>
+```
+
+### 환경변수
+
+| 이름 | 필수 | 설명 |
+| --- | --- | --- |
+| `DATABASE_URL` | 예 | Neon Postgres 연결 문자열 |
+| `DATABASE_URL_UNPOOLED` | 아니오 | 마이그레이션·확장 설치용 직접 연결 (없으면 `DATABASE_URL` 사용) |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | 예 | 임베딩과 기본 답변 모델(Gemini) 호출용 |
+| `CHAT_MODEL` | 아니오 | 답변 모델 교체. `google:<모델ID>` 또는 `anthropic:<모델ID>` (기본 `google:gemini-3.6-flash`) |
+| `ALLOW_PAID_MODELS` | 아니오 | `true`일 때만 유료 프로바이더(anthropic) 허용 |
+| `ANTHROPIC_API_KEY` | 아니오 | `CHAT_MODEL`이 anthropic일 때 필요 |
+| `DAILY_QUESTION_LIMIT` | 아니오 | 회원별 하루 질문 한도 (기본 50) |
+
+## 로드맵
+
+| 버전 | 내용 | 상태 |
+| --- | --- | --- |
+| v0 | 법령·조례·회의록 근거 검색 채팅, 대시보드·알림, 관리자 승인 | 운영 중 |
+| v1 | 행정사무감사 준비: 도구 호출 에이전트, 법령 실시간 조회, 지적사항·예산 도구, 질의서 초안 | 설계 중 |
+| v2 | 예산 심사 준비: 예산서 구조화, 증감·이상치 분석 | 예정 |
+| v3 | 의정활동 보고서: 활동 기록을 모아 초안 생성 | 예정 |
+
+행감에서 만든 도구(회의록 분석, 부서별 이력, 예산 조회)는 예산 심사에서 다시 쓰이고, 행감·예산 질의 기록은 보고서의 재료가 됩니다.
+
+## 변경 기록
+
+| 날짜 | 내용 |
+| --- | --- |
+| 2026-10-04 | 방향 전환: 기능 6개를 동시에 개발하던 방식에서 행감 준비 한 가지 업무를 끝까지 해결하는 방식으로 재기획 |
+| 2026-10-04 | 회원별 일일 질문 한도, 답변 모델 교체 구조와 유료 모델 안전장치 |
+| 2026-10-04 | 대시보드·알림 DB 연동 |
+| 2026-10-04 | 외부 인증 제거, 아이디·비밀번호 인증으로 전환, API 권한 검증 강화 |
+| 2026-09-23 | pgvector 기반 RAG 백엔드 연동 |
+| 2026-09-22 | 첫 버전: 기획 문서 기반 화면 21개, 인증·DB 기반 |
+
+처음 기획(v0)은 "의원에게 필요한 기능 6가지"를 동시에 만드는 방식이었습니다. 만들어 보니 데이터를 확보하지 못한 기능은 목업에 머물렀고, 사용자에게 가장 큰 문제가 무엇인지도 검증되지 않았습니다. 그래서 v1부터는 업무 하나를 골라 끝까지 해결하는 방식으로 바꿨습니다. 초기 기획 문서는 [docs/archive](docs/archive/v0-기획문서.md)에 있습니다.
+
+## 문서
+
+| 문서 | 내용 |
+| --- | --- |
+| [01. 문제 정의](docs/01-problem-definition.md) | 사용자, 문제, 핵심 업무 선정 근거, 성공 지표, 범위 밖 항목 |
+| [02. Discovery](docs/02-discovery.md) | 사용자 접근이 불가능할 때의 대체 조사, 가설과 검증 계획 |
+| [03. 데이터와 구조](docs/03-data-and-architecture.md) | 데이터 유형별 조회 방식 결정 기록, 시스템 구조, 알려진 제약 |
+| [v0 기획 문서](docs/archive/v0-기획문서.md) | 초기 기능 중심 기획 (보관용) |
