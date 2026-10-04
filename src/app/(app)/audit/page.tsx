@@ -79,14 +79,14 @@ export default async function AuditPage() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
         {header}
         <Notice
-          title="먼저 의원 정보를 연결해주세요"
+          title="먼저 소속 상임위를 선택해주세요"
           action={
             <Button asChild>
-              <Link href="/mypage/account">마이페이지에서 연결하기</Link>
+              <Link href="/mypage/account">마이페이지에서 선택하기</Link>
             </Button>
           }
         >
-          행정사무감사는 위원회별로 소관 부서를 감사합니다. 의원 명단에서 본인을 선택하면 위원회에 맞춰 준비합니다.
+          행정사무감사는 위원회별로 소관 부서를 감사합니다. 마이페이지에서 상임위를 고르거나 의원 명단에서 본인을 선택하면 위원회에 맞춰 준비합니다.
         </Notice>
       </div>
     );

@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { getCouncilRoster, getLinkedCouncilMember } from "@/lib/council-members";
+import { committeesOf, getCouncilRoster, getLinkedCouncilMember } from "@/lib/council-members";
 import { getActiveMember } from "@/lib/member";
 
+import { CommitteePicker } from "./committee-picker";
 import { CouncilMemberPicker } from "./council-member-picker";
 
 const statusLabel: Record<string, string> = {
@@ -82,6 +83,23 @@ export default async function MyPageAccountPage() {
               committees: m.committees,
             }))}
             linkedId={linked?.id ?? null}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">소속 상임위원회</CardTitle>
+          <CardDescription>
+            행정사무감사는 위원회별로 소관 부서를 감사합니다. 여기서 고른 위원회 기준으로 감사 준비 자료를 보여드립니다.
+            {member.committee ? ` 현재: ${member.committee}` : " 아직 선택하지 않았습니다."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <CommitteePicker
+            committees={committeesOf(roster)}
+            current={member.committee}
+            linkedCommittees={linked?.committees ?? []}
           />
         </CardContent>
       </Card>

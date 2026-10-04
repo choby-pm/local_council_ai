@@ -15,6 +15,12 @@ export function primaryCommittee(committees: string[]): string | null {
   return committees.find((c) => c !== STEERING_COMMITTEE) ?? committees[0] ?? null;
 }
 
+// 위원회 목록은 명단에서 뽑되, 상임위를 의회운영위원회보다 앞에 둔다
+export function committeesOf(roster: CouncilMember[]): string[] {
+  const all = [...new Set(roster.flatMap((m) => m.committees))];
+  return all.sort((a, b) => Number(a === STEERING_COMMITTEE) - Number(b === STEERING_COMMITTEE) || a.localeCompare(b, "ko"));
+}
+
 export async function getCouncilRoster(council: string): Promise<CouncilMember[]> {
   return getDb()
     .select()
