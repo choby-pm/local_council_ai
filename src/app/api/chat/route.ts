@@ -3,7 +3,8 @@ import { and, cosineDistance, eq, inArray, or, isNull } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { conversations, documentChunks, documents, messages } from "@/db/schema";
-import { getCurrentMember } from "@/lib/member";
+import { getActiveMember } from "@/lib/member";
+import { isUuid } from "@/lib/utils";
 import {
   embedQuery,
   generateGroundedAnswer,
@@ -18,24 +19,40 @@ const MENU_DOC_TYPES: Record<string, ("law" | "ordinance" | "meeting" | "budget"
 };
 
 export async function POST(req: NextRequest) {
-  const member = await getCurrentMember();
+  const member = await getActiveMember();
   if (!member) {
-    return NextResponse.json({ error: "로그인이 필요합니다" }, { status: 401 });
+    return NextResponse.json({ error: "이용 권한이 없습니다" }, { status: 403 });
   }
 
-  const body = await req.json();
-  const menu = body.menu as string;
-  const question = (body.question as string)?.trim();
-  let conversationId = body.conversationId as string | undefined;
+  const body = await req.json().catch(() => null);
+  const menu = body?.menu;
+  const question = typeof body?.question === "string" ? body.question.trim() : "";
+  let conversationId: string | undefined = body?.conversationId ?? undefined;
 
-  const docTypes = MENU_DOC_TYPES[menu];
-  if (!docTypes || !question) {
+  const docTypes =
+    typeof menu === "string" && Object.hasOwn(MENU_DOC_TYPES, menu) ? MENU_DOC_TYPES[menu] : null;
+  if (!docTypes || !question || (conversationId !== undefined && !isUuid(conversationId))) {
     return NextResponse.json({ error: "잘못된 요청입니다" }, { status: 400 });
   }
 
   const db = getDb();
 
-  if (!conversationId) {
+  if (conversationId) {
+    // 요청 본문의 conversationId는 신뢰할 수 없음 — 본인 소유이며 같은 메뉴의 대화인지 확인
+    const [owned] = await db
+      .select({ id: conversations.id })
+      .from(conversations)
+      .where(
+        and(
+          eq(conversations.id, conversationId),
+          eq(conversations.memberId, member.id),
+          eq(conversations.menu, menu as "laws" | "meetings" | "budget")
+        )
+      );
+    if (!owned) {
+      return NextResponse.json({ error: "대화를 찾을 수 없습니다" }, { status: 404 });
+    }
+  } else {
     const [conv] = await db
       .insert(conversations)
       .values({

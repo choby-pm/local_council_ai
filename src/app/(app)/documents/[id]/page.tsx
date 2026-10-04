@@ -5,7 +5,8 @@ import { ExternalLink, FileText } from "lucide-react";
 
 import { getDb } from "@/db";
 import { documentChunks, documents } from "@/db/schema";
-import { getCurrentMember } from "@/lib/member";
+import { getActiveMember } from "@/lib/member";
+import { isUuid } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,10 +23,11 @@ export default async function DocumentDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const member = await getCurrentMember();
+  const member = await getActiveMember();
   if (!member) notFound();
 
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const db = getDb();
 
   const [doc] = await db.select().from(documents).where(eq(documents.id, id));

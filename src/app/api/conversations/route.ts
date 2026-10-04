@@ -3,15 +3,20 @@ import { and, desc, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { conversations } from "@/db/schema";
-import { getCurrentMember } from "@/lib/member";
+import { getActiveMember } from "@/lib/member";
 
-type Menu = "laws" | "meetings" | "budget" | "reports";
+const MENUS = ["laws", "meetings", "budget", "reports"] as const;
+type Menu = (typeof MENUS)[number];
+
+function parseMenu(value: unknown): Menu | null {
+  return MENUS.includes(value as Menu) ? (value as Menu) : null;
+}
 
 export async function GET(req: NextRequest) {
-  const member = await getCurrentMember();
-  if (!member) return NextResponse.json({ error: "로그인이 필요합니다" }, { status: 401 });
+  const member = await getActiveMember();
+  if (!member) return NextResponse.json({ error: "이용 권한이 없습니다" }, { status: 403 });
 
-  const menu = req.nextUrl.searchParams.get("menu") as Menu | null;
+  const menu = parseMenu(req.nextUrl.searchParams.get("menu"));
   if (!menu) return NextResponse.json({ error: "menu가 필요합니다" }, { status: 400 });
 
   const db = getDb();
@@ -25,11 +30,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const member = await getCurrentMember();
-  if (!member) return NextResponse.json({ error: "로그인이 필요합니다" }, { status: 401 });
+  const member = await getActiveMember();
+  if (!member) return NextResponse.json({ error: "이용 권한이 없습니다" }, { status: 403 });
 
-  const body = await req.json();
-  const menu = body.menu as Menu;
+  const body = await req.json().catch(() => null);
+  const menu = parseMenu(body?.menu);
   if (!menu) return NextResponse.json({ error: "menu가 필요합니다" }, { status: 400 });
 
   const db = getDb();
