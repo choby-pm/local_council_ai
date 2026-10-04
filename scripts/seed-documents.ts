@@ -4,6 +4,7 @@ import { embed } from "ai";
 import { google } from "@ai-sdk/google";
 
 import * as schema from "../src/db/schema";
+import { buildDocumentNotification } from "../src/lib/document-notifications";
 
 const COUNCIL = "고양특례시의회";
 
@@ -154,6 +155,9 @@ async function main() {
       content: doc.content,
       embedding,
     });
+
+    // 문서 삭제 시 알림도 cascade로 함께 지워지므로 재적재마다 새로 생성
+    await db.insert(schema.notifications).values(buildDocumentNotification(row));
 
     console.log(`색인 완료: [${doc.type}] ${doc.title}`);
   }

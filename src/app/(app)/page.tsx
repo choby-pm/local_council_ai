@@ -1,19 +1,10 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  AlertTriangle,
-  ArrowUpRight,
-  Calendar,
-  FileText,
-  SendHorizonal,
-  Sparkles,
-} from "lucide-react";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { AlertTriangle, ArrowUpRight, Calendar, CalendarClock, FileText } from "lucide-react";
 
+import { getDb } from "@/db";
+import { documents, reports } from "@/db/schema";
 import { Badge } from "@/components/ui/badge";
-import { useMember } from "@/lib/member-context";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,54 +13,78 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { getActiveMember, type Member } from "@/lib/member";
+import { getQuarterReportDeadline } from "@/lib/report-deadline";
+import { cn } from "@/lib/utils";
 
-const quickPrompts: { text: string; menu: "laws" | "meetings" | "budget" }[] = [
-  { text: "이번 회기 상정 안건 요약해줘", menu: "meetings" },
-  { text: "최근 개정된 조례 알려줘", menu: "laws" },
-  { text: "우리 의회 예산 이상 증감 항목 찾아줘", menu: "budget" },
-];
+import { DashboardAsk } from "./dashboard-ask";
 
-const agendaNews = [
-  {
-    title: "제315회 임시회 본회의 안건 상정",
-    meta: "행정안전위원회 · D-2",
-    desc: "「OO시 지방보조금 관리 조례 일부개정조례안」 외 2건 상정 예정",
-  },
-  {
-    title: "예산결산특별위원회 심사 일정 공지",
-    meta: "예산결산특별위원회 · D-4",
-    desc: "2026년도 3회 추가경정예산안 부서별 심사 일정 확정",
-  },
-];
+const NEWS_LIMIT = 3;
+// 마감이 이 일수 이내로 다가오면 경고 톤으로 표시
+const DEADLINE_WARNING_DAYS = 7;
 
-const meetingNews = [
-  {
-    title: "제314회 정례회 회의록 공개",
-    meta: "본회의 · 2026-09-10",
-    desc: "주민참여예산 관련 5분 자유발언 3건 포함",
-  },
-  {
-    title: "행정안전위원회 상임위 회의록 공개",
-    meta: "행정안전위원회 · 2026-09-08",
-    desc: "재난안전관리 조례 질의응답 요지 정리 완료",
-  },
-];
+type NewsItem = { id: string; title: string; meta: string; excerpt: string | null };
 
-export default function DashboardPage() {
-  const router = useRouter();
-  const member = useMember();
-  const [draft, setDraft] = useState("");
+async function getDocumentNews(
+  member: Member,
+  types: ("law" | "ordinance" | "meeting" | "budget")[]
+): Promise<NewsItem[]> {
+  const rows = await getDb()
+    .select({
+      id: documents.id,
+      title: documents.title,
+      sourceMeta: documents.sourceMeta,
+      // 문서의 첫 청크를 미리보기로 사용.
+      // ${documents.id}로 쓰면 drizzle이 단일 테이블 쿼리에서 "id"로만 출력해 서브쿼리 안에서 c.id로 해석됨 → 테이블명 명시
+      excerpt: sql<string | null>`(
+        select c.content from document_chunks c
+        where c.document_id = "documents"."id"
+        order by c.created_at limit 1
+      )`,
+    })
+    .from(documents)
+    .where(
+      and(
+        inArray(documents.type, types),
+        or(isNull(documents.council), eq(documents.council, member.council))
+      )
+    )
+    // sourceMeta.date는 "YYYY-MM-DD ..." 형식이라 문자열 정렬 = 날짜 정렬
+    .orderBy(sql`${documents.sourceMeta}->>'date' desc nulls last`, desc(documents.createdAt))
+    .limit(NEWS_LIMIT);
 
-  function goToSearch(menu: "laws" | "meetings" | "budget", question: string) {
-    if (!question.trim()) return;
-    router.push(`/${menu}?q=${encodeURIComponent(question.trim())}`);
-  }
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    meta: r.sourceMeta ? [r.sourceMeta.source, r.sourceMeta.date].filter(Boolean).join(" · ") : "",
+    excerpt: r.excerpt,
+  }));
+}
 
-  function handleSend() {
-    goToSearch("laws", draft);
-  }
+export default async function DashboardPage() {
+  const member = await getActiveMember();
+  // (app) 레이아웃이 비활성 회원을 리다이렉트하지만, 페이지는 레이아웃과 병렬 렌더링되므로 여기서도 확인
+  if (!member) return null;
+
+  const deadline = getQuarterReportDeadline();
+  const [agendaNews, meetingNews, [finishedReport]] = await Promise.all([
+    getDocumentNews(member, ["ordinance"]),
+    getDocumentNews(member, ["meeting", "budget"]),
+    getDb()
+      .select({ id: reports.id })
+      .from(reports)
+      .where(
+        and(
+          eq(reports.memberId, member.id),
+          eq(reports.periodLabel, deadline.periodLabel),
+          eq(reports.status, "완료")
+        )
+      )
+      .limit(1),
+  ]);
+
+  const urgent = deadline.daysLeft <= DEADLINE_WARNING_DAYS;
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6">
@@ -80,112 +95,103 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
-        <AlertTriangle className="size-4 shrink-0 text-destructive" />
-        <div className="flex-1">
-          <p className="text-sm font-medium">2026년 3분기 의정활동 보고서 마감까지 D-5</p>
-          <p className="text-xs text-muted-foreground">
-            누적된 활동이력을 기반으로 초안을 생성할 수 있습니다.
-          </p>
+      {!finishedReport && (
+        <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
+          {urgent ? (
+            <AlertTriangle className="size-4 shrink-0 text-destructive" />
+          ) : (
+            <CalendarClock className="size-4 shrink-0 text-muted-foreground" />
+          )}
+          <div className="flex-1">
+            <p className="text-sm font-medium">
+              {deadline.periodLabel} 의정활동 보고서 마감까지{" "}
+              <span className={cn(urgent && "text-destructive")}>
+                {deadline.daysLeft === 0 ? "D-Day" : `D-${deadline.daysLeft}`}
+              </span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              마감일 {deadline.deadline} · 누적된 활동이력을 기반으로 초안을 생성할 수 있습니다.
+            </p>
+          </div>
+          <Button asChild size="sm" variant="outline" className="shrink-0">
+            <Link href="/reports">
+              초안 작성하러 가기
+              <ArrowUpRight />
+            </Link>
+          </Button>
         </div>
-        <Button asChild size="sm" variant="outline" className="shrink-0">
-          <Link href="/reports">
-            초안 작성하러 가기
-            <ArrowUpRight />
-          </Link>
-        </Button>
-      </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <FileText className="size-4 text-muted-foreground" />
-              안건 소식
-            </CardTitle>
-            <CardDescription>상정 예정·진행 중인 안건 업데이트</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {agendaNews.map((item, i) => (
-              <div key={item.title}>
-                {i > 0 && <Separator className="mb-4" />}
-                <Link href="/meetings" className="block rounded-md -m-1 p-1 transition-colors hover:bg-muted/50">
-                  <p className="text-sm font-medium">{item.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{item.desc}</p>
-                  <Badge variant="outline" className="mt-2 font-normal text-muted-foreground">
-                    {item.meta}
-                  </Badge>
-                </Link>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Calendar className="size-4 text-muted-foreground" />
-              회의록 소식
-            </CardTitle>
-            <CardDescription>새로 공개된 회의록·발언 요지</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            {meetingNews.map((item, i) => (
-              <div key={item.title}>
-                {i > 0 && <Separator className="mb-4" />}
-                <Link href="/meetings" className="block rounded-md -m-1 p-1 transition-colors hover:bg-muted/50">
-                  <p className="text-sm font-medium">{item.title}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{item.desc}</p>
-                  <Badge variant="outline" className="mt-2 font-normal text-muted-foreground">
-                    {item.meta}
-                  </Badge>
-                </Link>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+        <NewsCard
+          icon={FileText}
+          title="안건 소식"
+          description={`${member.council} 최근 처리·등록된 조례안`}
+          items={agendaNews}
+          emptyText="아직 등록된 조례안이 없습니다"
+        />
+        <NewsCard
+          icon={Calendar}
+          title="회의록 소식"
+          description="새로 공개된 회의록"
+          items={meetingNews}
+          emptyText="아직 공개된 회의록이 없습니다"
+        />
       </div>
 
       <div className="flex-1" />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Sparkles className="size-4 text-muted-foreground" />
-            무엇을 도와드릴까요?
-          </CardTitle>
-          <CardDescription>
-            법령·조례, 회의·안건, 예산·결산, 의정활동 보고서 — 원하시는 주제를 바로 질문해보세요.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex gap-2">
-            <Input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSend()}
-              placeholder="예: 최근 3년간 청년 주거 지원 조례 제정 현황 알려줘"
-              className="h-11"
-            />
-            <Button size="icon" className="h-11 w-11 shrink-0" onClick={handleSend} disabled={!draft.trim()}>
-              <SendHorizonal />
-              <span className="sr-only">질문 보내기</span>
-            </Button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {quickPrompts.map((prompt) => (
-              <Badge
-                key={prompt.text}
-                variant="secondary"
-                className="cursor-pointer px-3 py-1.5 font-normal hover:bg-secondary/70"
-                onClick={() => goToSearch(prompt.menu, prompt.text)}
-              >
-                {prompt.text}
-              </Badge>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <DashboardAsk />
     </div>
+  );
+}
+
+function NewsCard({
+  icon: Icon,
+  title,
+  description,
+  items,
+  emptyText,
+}: {
+  icon: typeof FileText;
+  title: string;
+  description: string;
+  items: NewsItem[];
+  emptyText: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Icon className="size-4 text-muted-foreground" />
+          {title}
+        </CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        {items.length === 0 && (
+          <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+        )}
+        {items.map((item, i) => (
+          <div key={item.id}>
+            {i > 0 && <Separator className="mb-4" />}
+            <Link
+              href={`/documents/${item.id}`}
+              className="-m-1 block rounded-md p-1 transition-colors hover:bg-muted/50"
+            >
+              <p className="text-sm font-medium">{item.title}</p>
+              {item.excerpt && (
+                <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{item.excerpt}</p>
+              )}
+              {item.meta && (
+                <Badge variant="outline" className="mt-2 font-normal text-muted-foreground">
+                  {item.meta}
+                </Badge>
+              )}
+            </Link>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bell, LogOut, Settings, UserRound } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,12 +20,16 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { SessionExpiredDialog } from "@/components/layout/session-expired-dialog";
 import { cn } from "@/lib/utils";
 import { logout } from "@/app/(auth)/actions";
+import { markNotificationRead } from "@/app/(app)/notifications/actions";
 
-const initialNotifications = [
-  { id: "1", title: "본회의 안건 상정 D-2", desc: "제315회 임시회 상정 예정 안건 3건", unread: true },
-  { id: "2", title: "의정활동 보고서 마감 D-5", desc: "2026년 3분기 보고서 제출 기한", unread: true },
-  { id: "3", title: "조례 갱신 안내", desc: "「OO시 주민참여 기본 조례」 개정 반영", unread: false },
-];
+export type HeaderNotification = {
+  id: string;
+  title: string;
+  description: string | null;
+  href: string | null;
+  unread: boolean;
+  time: string;
+};
 
 const freshnessStates = [
   { label: "최신 반영일 2026-09-15 기준", className: "text-muted-foreground" },
@@ -38,11 +43,24 @@ const freshnessStates = [
   },
 ] as const;
 
-export function AppHeader({ member }: { member: Member }) {
-  const [notifications, setNotifications] = useState(initialNotifications);
+export function AppHeader({
+  member,
+  notifications,
+  unreadCount,
+}: {
+  member: Member;
+  notifications: HeaderNotification[];
+  unreadCount: number;
+}) {
+  const router = useRouter();
   const [freshnessIdx, setFreshnessIdx] = useState(0);
-  const unreadCount = notifications.filter((n) => n.unread).length;
   const freshness = freshnessStates[freshnessIdx];
+
+  function openNotification(n: HeaderNotification) {
+    // 읽음 처리 후 레이아웃 재검증으로 배지·목록이 갱신됨
+    if (n.unread) void markNotificationRead(n.id);
+    if (n.href) router.push(n.href);
+  }
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
@@ -89,17 +107,16 @@ export function AppHeader({ member }: { member: Member }) {
                 <DropdownMenuItem
                   key={n.id}
                   className="flex flex-col items-start gap-0.5 py-2"
-                  onSelect={() =>
-                    setNotifications((prev) =>
-                      prev.map((x) => (x.id === n.id ? { ...x, unread: false } : x))
-                    )
-                  }
+                  onSelect={() => openNotification(n)}
                 >
                   <div className="flex w-full items-center gap-1.5">
-                    {n.unread && <span className="size-1.5 rounded-full bg-destructive" />}
+                    {n.unread && <span className="size-1.5 shrink-0 rounded-full bg-destructive" />}
                     <span className="text-sm font-medium">{n.title}</span>
+                    <span className="ml-auto shrink-0 text-xs text-muted-foreground">{n.time}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{n.desc}</span>
+                  {n.description && (
+                    <span className="line-clamp-1 text-xs text-muted-foreground">{n.description}</span>
+                  )}
                 </DropdownMenuItem>
               ))
             )}

@@ -1,9 +1,11 @@
 import {
   boolean,
+  index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -212,17 +214,39 @@ export const documentChunks = pgTable("document_chunks", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-export const notifications = pgTable("notifications", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  // memberId = null → 전체 공지
-  memberId: uuid("member_id").references(() => members.id, { onDelete: "cascade" }),
-  type: text("type").notNull(),
-  title: text("title").notNull(),
-  description: text("description"),
-  href: text("href"),
-  read: boolean("read").notNull().default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+// 대상: memberId가 있으면 해당 회원 개인 알림. 없으면 공지 — council이 null이면 전체, 값이 있으면 그 의회 소속 전원.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    memberId: uuid("member_id").references(() => members.id, { onDelete: "cascade" }),
+    council: text("council"),
+    // 문서 기반 알림은 문서 재적재(seed-documents) 시 함께 삭제되도록 연결
+    documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }),
+    // 값은 src/lib/notification-types.ts 참고
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    href: text("href"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [index("notifications_created_at_idx").on(t.createdAt)]
+);
+
+// 공지는 여러 회원이 공유하므로 읽음 상태를 알림 행이 아닌 회원별로 저장
+export const notificationReads = pgTable(
+  "notification_reads",
+  {
+    notificationId: uuid("notification_id")
+      .notNull()
+      .references(() => notifications.id, { onDelete: "cascade" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.notificationId, t.memberId] })]
+);
 
 export const batchStatusEnum = pgEnum("batch_status", [
   "success",

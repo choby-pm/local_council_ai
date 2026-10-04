@@ -5,6 +5,8 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCurrentMember } from "@/lib/member";
 import { MemberProvider } from "@/lib/member-context";
+import { getNotifications, getUnreadNotificationCount } from "@/lib/notifications";
+import { formatRelativeTime } from "@/lib/utils";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const member = await getCurrentMember();
@@ -16,12 +18,29 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   if (member.status === "disabled") redirect("/deactivated");
   if (!member.onboardedAt) redirect("/onboarding/confirm");
 
+  const [recentNotifications, unreadCount] = await Promise.all([
+    getNotifications(member, 5),
+    getUnreadNotificationCount(member),
+  ]);
+  const now = new Date();
+
   return (
     <MemberProvider member={member}>
       <SidebarProvider>
         <AppSidebar member={member} />
         <SidebarInset>
-          <AppHeader member={member} />
+          <AppHeader
+            member={member}
+            unreadCount={unreadCount}
+            notifications={recentNotifications.map((n) => ({
+              id: n.id,
+              title: n.title,
+              description: n.description,
+              href: n.href,
+              unread: n.unread,
+              time: formatRelativeTime(n.createdAt, now),
+            }))}
+          />
           <main className="flex flex-1 flex-col gap-4 p-4 md:p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>
