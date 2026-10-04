@@ -1,18 +1,20 @@
 import { APICallError, RetryError, createProviderRegistry, embed } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import { google } from "@ai-sdk/google";
+import { groq } from "@ai-sdk/groq";
 
 // 답변 생성 모델은 CHAT_MODEL 환경변수("프로바이더:모델ID")로 교체한다. 예)
 //   google:gemini-3.6-flash   — Google AI Studio 무료 티어 (GOOGLE_GENERATIVE_AI_API_KEY, 기본값)
+//   groq:openai/gpt-oss-120b — Groq 무료 티어 (GROQ_API_KEY, 카드 등록 불필요, 모델별 하루 한도)
 //   anthropic:claude-sonnet-5-5 / anthropic:claude-haiku-4-5 / anthropic:claude-opus-5-5
 //                              — Claude API (ANTHROPIC_API_KEY, Console에서 지출 한도 설정 권장)
 // 각 프로바이더 키는 실제 호출 시점에 읽으므로, 쓰지 않는 프로바이더의 키는 없어도 된다.
 //
 // 비용 안전장치: 무료 티어가 없는 프로바이더(PAID_PROVIDERS)는 ALLOW_PAID_MODELS=true일 때만 허용.
 // google은 API 키의 Cloud 프로젝트에 결제 계정이 연결되지 않은 한 무료 티어로만 동작(한도 초과 시 429, 과금 없음).
-const registry = createProviderRegistry({ google, anthropic });
+const registry = createProviderRegistry({ google, anthropic, groq });
 
-const SUPPORTED_PROVIDERS = ["google", "anthropic"] as const;
+const SUPPORTED_PROVIDERS = ["google", "anthropic", "groq"] as const;
 type Provider = (typeof SUPPORTED_PROVIDERS)[number];
 type ChatModelId = `${Provider}:${string}`;
 
@@ -42,20 +44,26 @@ export const CHAT_MODEL = resolveChatModelId();
 
 export type ChatModelOption = { id: string; label: string; note: string };
 
-// 의원이 AI 비서에서 고를 수 있는 모델. Gemini 무료 티어는 모델마다 하루 요청 한도가 따로 있다.
-// 유료(Claude)는 ALLOW_PAID_MODELS=true일 때만 목록에 나온다.
-const MODEL_OPTIONS: (ChatModelOption & { paid?: boolean })[] = [
+// 의원이 AI 비서에서 고를 수 있는 모델. 무료 티어(Gemini, Groq)는 모델마다 하루 요청 한도가 따로라
+// 모델을 바꿔 가며 쓰면 전체 질문 가능량이 늘어난다.
+// requiresEnv: 해당 키가 설정된 경우에만 목록에 나온다. paid: ALLOW_PAID_MODELS=true일 때만 나온다.
+const MODEL_OPTIONS: (ChatModelOption & { paid?: boolean; requiresEnv?: string })[] = [
   { id: "google:gemini-3.8-flash", label: "Gemini 3.8 Flash", note: "최신" },
   { id: "google:gemini-3.6-flash", label: "Gemini 3.6 Flash", note: "기본" },
   { id: "google:gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite", note: "빠름" },
   { id: "google:gemini-2.5-flash", label: "Gemini 2.5 Flash", note: "이전 세대" },
+  // OpenAI가 공개한 오픈 모델을 Groq 무료 티어로 (하루 약 1,000회)
+  { id: "groq:openai/gpt-oss-120b", label: "GPT-OSS 120B", note: "무료·Groq", requiresEnv: "GROQ_API_KEY" },
+  { id: "groq:openai/gpt-oss-20b", label: "GPT-OSS 20B", note: "무료·Groq·빠름", requiresEnv: "GROQ_API_KEY" },
   { id: "anthropic:claude-sonnet-5-5", label: "Claude Sonnet 5.5", note: "유료", paid: true },
   { id: "anthropic:claude-haiku-4-5", label: "Claude Haiku 4.5", note: "유료·빠름", paid: true },
 ];
 
 export function chatModelOptions(): ChatModelOption[] {
   const allowPaid = process.env.ALLOW_PAID_MODELS === "true";
-  const options = MODEL_OPTIONS.filter((m) => allowPaid || !m.paid).map(({ id, label, note }) => ({ id, label, note }));
+  const options = MODEL_OPTIONS.filter(
+    (m) => (allowPaid || !m.paid) && (!m.requiresEnv || Boolean(process.env[m.requiresEnv]))
+  ).map(({ id, label, note }) => ({ id, label, note }));
   // CHAT_MODEL로 지정한 기본 모델이 목록에 없으면 맨 앞에 추가
   if (!options.some((m) => m.id === CHAT_MODEL)) options.unshift({ id: CHAT_MODEL, label: CHAT_MODEL, note: "기본" });
   return options;

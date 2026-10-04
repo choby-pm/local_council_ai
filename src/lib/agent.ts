@@ -218,6 +218,8 @@ export async function runCouncilAgent(opts: {
     providerOptions: {
       google: { thinkingConfig: { thinkingBudget: 0 } },
       anthropic: { effort: "low" },
+      // gpt-oss는 추론 모델 — 단순 근거 종합이라 추론량을 낮춰 속도·토큰 한도를 아낀다
+      groq: { reasoningEffort: "low" },
     },
   });
 
