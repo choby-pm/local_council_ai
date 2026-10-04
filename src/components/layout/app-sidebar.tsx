@@ -30,8 +30,8 @@ import type { Member } from "@/lib/member";
 // 동작하지 않던 목업 메뉴(예산·결산, 의정활동 보고서, 활동이력, 저장한 자료함, 관리자 콘솔 일부)는 제거.
 // AI 비서가 중심 화면이고, 행정사무감사 질의 후보는 비서의 추천 질문으로 들어갔다 (결정 D-25)
 const mainNav = [
-  { title: "AI 비서", url: "/assistant", icon: MessageSquareText },
   { title: "대시보드", url: "/", icon: LayoutDashboard },
+  { title: "AI 비서", url: "/assistant", icon: MessageSquareText },
 ];
 
 const adminNav = [{ title: "가입 승인", url: "/admin/approvals", icon: ClipboardCheck }];
