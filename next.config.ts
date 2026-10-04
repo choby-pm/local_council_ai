@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
       { source: "/mypage/saved", destination: "/mypage/account", permanent: false },
       { source: "/admin/:path(accounts|batches|errors)", destination: "/admin/approvals", permanent: false },
       { source: "/onboarding/activity-intro", destination: "/", permanent: false },
+      // 행정사무감사 준비 화면은 AI 비서의 추천 질문으로 합쳐짐 (D-25)
+      { source: "/audit", destination: "/assistant", permanent: false },
     ];
   },
 };

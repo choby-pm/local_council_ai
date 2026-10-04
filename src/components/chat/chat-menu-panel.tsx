@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { ChatThread, type DbMessage } from "@/components/chat/chat-thread";
+import { ChatThread, type ChatSuggestion, type DbMessage } from "@/components/chat/chat-thread";
 import { ConversationList, type ConversationItem } from "@/components/chat/conversation-list";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -33,10 +33,12 @@ export function ChatMenuPanel({
   menu,
   placeholder,
   initialQuestion,
+  suggestions = [],
 }: {
   menu: Menu;
   placeholder: string;
   initialQuestion?: string;
+  suggestions?: ChatSuggestion[];
 }) {
   const [items, setItems] = useState<ConversationItem[]>([]);
   const [activeId, setActiveId] = useState<string>("");
@@ -52,7 +54,10 @@ export function ChatMenuPanel({
         if (cancelled) return;
         setItems(data.conversations.map((c) => ({ id: c.id, title: c.title, updatedAt: formatUpdatedAt(c.updatedAt) })));
         // 대시보드 빠른 질문 등으로 넘어온 질문이 있으면, 기존 대화를 이어가지 않고 새 대화로 시작
-        if (data.conversations.length > 0 && !initialQuestion) setActiveId(data.conversations[0].id);
+        // 추천 질문이 있으면 빈 대화로 시작해 추천을 먼저 보여준다 (이전 대화는 목록에서 열 수 있음)
+        if (data.conversations.length > 0 && !initialQuestion && suggestions.length === 0) {
+          setActiveId(data.conversations[0].id);
+        }
         setLoadingList(false);
       });
     return () => {
@@ -149,6 +154,7 @@ export function ChatMenuPanel({
           initialMessages={activeId ? messages : []}
           placeholder={placeholder}
           autoSendQuestion={activeId ? undefined : initialQuestion}
+          suggestions={suggestions}
           onConversationCreated={(conv) => {
             setItems((prev) => [{ id: conv.id, title: conv.title, updatedAt: "방금 전" }, ...prev]);
             setActiveId(conv.id);

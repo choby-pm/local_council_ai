@@ -88,8 +88,8 @@ export default async function DashboardPage() {
           </p>
         </div>
         <Button asChild size="sm" variant="outline" className="shrink-0">
-          <Link href={member.committee ? "/audit" : "/mypage/account"}>
-            {member.committee ? "질의 후보 보기" : "상임위 선택하기"}
+          <Link href={member.committee ? "/assistant" : "/mypage/account"}>
+            {member.committee ? "AI 비서에서 보기" : "상임위 선택하기"}
             <ArrowUpRight />
           </Link>
         </Button>

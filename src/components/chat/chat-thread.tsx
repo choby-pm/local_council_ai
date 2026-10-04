@@ -87,6 +87,9 @@ function MessageView({ message, onRetry }: { message: ThreadMessage; onRetry?: (
   );
 }
 
+// 빈 대화에서 보여줄 추천 질문 (행감 질의 후보 등). 누르면 prompt를 그대로 보낸다
+export type ChatSuggestion = { id: string; title: string; tags: string[]; detail: string; prompt: string };
+
 export function ChatThread({
   menu,
   conversationId,
@@ -94,6 +97,7 @@ export function ChatThread({
   placeholder,
   onConversationCreated,
   autoSendQuestion,
+  suggestions = [],
 }: {
   menu: "laws" | "meetings" | "budget" | "assistant";
   conversationId: string | null;
@@ -101,6 +105,7 @@ export function ChatThread({
   placeholder: string;
   onConversationCreated?: (conv: { id: string; title: string; updatedAt: string }) => void;
   autoSendQuestion?: string;
+  suggestions?: ChatSuggestion[];
 }) {
   const [messages, setMessages] = useState<ThreadMessage[]>(initialMessages);
   const [activeConversationId, setActiveConversationId] = useState(conversationId);
@@ -205,10 +210,44 @@ export function ChatThread({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex-1 space-y-5 overflow-y-auto pr-1 pb-2">
-        {messages.length === 0 && (
+        {messages.length === 0 && suggestions.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-1 py-12 text-center text-muted-foreground">
             <Sparkles className="size-5" />
             <p className="text-sm">새 대화를 시작해보세요</p>
+          </div>
+        )}
+        {messages.length === 0 && suggestions.length > 0 && (
+          <div className="flex flex-col gap-3 py-4">
+            <div>
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <Sparkles className="size-4 text-muted-foreground" />
+                행정사무감사에서 다시 물어볼 만한 사안
+              </p>
+              <p className="text-xs text-muted-foreground">
+                작년 행감 지적사항 중 여러 해 반복됐거나 시정을 요구한 것입니다. 누르면 근거를 찾아 질의 포인트와 질의서 초안을 만들어 드립니다.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => handleSend(s.prompt)}
+                  disabled={loading || limitReached}
+                  className="flex flex-col gap-1.5 rounded-lg border bg-card p-3 text-left transition-colors hover:bg-muted/50 disabled:opacity-50"
+                >
+                  <span className="flex flex-wrap gap-1">
+                    {s.tags.map((t) => (
+                      <span key={t} className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                        {t}
+                      </span>
+                    ))}
+                  </span>
+                  <span className="text-sm font-medium leading-snug">{s.title}</span>
+                  <span className="line-clamp-2 text-xs text-muted-foreground">{s.detail}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
         {messages.map((m, i) => {

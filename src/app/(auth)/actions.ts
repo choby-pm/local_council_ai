@@ -94,9 +94,9 @@ export async function login(_prev: AuthFormState, formData: FormData): Promise<A
     return { error: "아이디 또는 비밀번호가 올바르지 않습니다", values };
   }
 
-  // 회원 상태(대기·거절·비활성)에 따른 화면 분기는 (app) 레이아웃이 담당
+  // 회원 상태(대기·거절·비활성)에 따른 화면 분기는 (app) 레이아웃이 담당. 첫 화면은 AI 비서
   await createSession(member.id);
-  redirect("/");
+  redirect("/assistant");
 }
 
 export async function logout() {

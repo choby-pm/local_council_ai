@@ -142,17 +142,24 @@ export async function getQuestionCandidates(opts: {
   return { latestYear, candidates, departments };
 }
 
-export async function getAuditFinding(id: string): Promise<AuditFinding | null> {
-  const [row] = await getDb().select().from(auditFindings).where(eq(auditFindings.id, id));
-  return row ?? null;
-}
+export type AuditSuggestion = { id: string; title: string; tags: string[]; detail: string; prompt: string };
 
-/** 같은 위원회의 이전 연도 행감에서 같은 사업으로 지적된 항목 (최근 순) */
-export async function getFindingHistory(finding: AuditFinding): Promise<AuditFinding[]> {
-  const rows = await getDb()
-    .select()
-    .from(auditFindings)
-    .where(and(eq(auditFindings.council, finding.council), eq(auditFindings.committee, finding.committee)))
-    .orderBy(desc(auditFindings.year));
-  return rows.filter((r) => r.year < finding.year && isSameIssue(finding, r));
+/**
+ * AI 비서의 빈 대화에 보여줄 추천 질문. 질의 후보 상위 항목을 "비서에게 물어볼 질문"으로 바꾼다.
+ * 카드를 만들 때는 AI를 쓰지 않고, 누른 뒤 비서가 도구로 근거를 찾아 답한다.
+ */
+export async function getAuditSuggestions(council: string, committee: string, limit = 4): Promise<AuditSuggestion[]> {
+  const { candidates } = await getQuestionCandidates({ council, committee });
+  return candidates.slice(0, limit).map(({ finding: f, signals }) => {
+    const subject = f.project ?? f.finding.slice(0, 30);
+    return {
+      id: f.id,
+      title: `${f.department} · ${subject}`,
+      tags: signals.length > 0 ? signals.map((s) => s.label) : [`${f.year}년 지적`],
+      detail: f.finding,
+      prompt:
+        `${f.department}의 "${subject}" 건에 대해 ${f.year}년 행정사무감사 지적사항과 이전 연도 지적 이력을 찾아, ` +
+        "올해 행정사무감사에서 이행 여부를 확인할 질의 포인트를 정리하고 질의서 초안을 만들어줘.",
+    };
+  });
 }

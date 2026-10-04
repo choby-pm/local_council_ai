@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   ClipboardCheck,
-  ClipboardList,
   Landmark,
   LayoutDashboard,
   MessageSquareText,
@@ -29,10 +28,10 @@ import type { Member } from "@/lib/member";
 
 // 법령·조례와 회의·안건은 같은 에이전트가 도구를 골라 답하므로 "AI 비서" 하나로 합쳤다.
 // 동작하지 않던 목업 메뉴(예산·결산, 의정활동 보고서, 활동이력, 저장한 자료함, 관리자 콘솔 일부)는 제거.
+// AI 비서가 중심 화면이고, 행정사무감사 질의 후보는 비서의 추천 질문으로 들어갔다 (결정 D-25)
 const mainNav = [
-  { title: "대시보드", url: "/", icon: LayoutDashboard },
-  { title: "행정사무감사 준비", url: "/audit", icon: ClipboardList },
   { title: "AI 비서", url: "/assistant", icon: MessageSquareText },
+  { title: "대시보드", url: "/", icon: LayoutDashboard },
 ];
 
 const adminNav = [{ title: "가입 승인", url: "/admin/approvals", icon: ClipboardCheck }];
@@ -59,7 +58,7 @@ export function AppSidebar({ member }: { member: Member }) {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
-              <Link href="/">
+              <Link href="/assistant">
                 <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                   <Landmark className="size-4" />
                 </div>
