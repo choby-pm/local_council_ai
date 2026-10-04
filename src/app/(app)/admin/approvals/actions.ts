@@ -28,7 +28,8 @@ export async function approveMember(memberId: string): Promise<Result> {
     .returning({ id: members.id });
   if (updated.length === 0) return { ok: false, error: "이미 처리된 신청입니다" };
 
-  revalidatePath("/admin/approvals");
+  // 사이드바의 대기 건수 배지(레이아웃)까지 갱신
+  revalidatePath("/", "layout");
   return { ok: true };
 }
 
@@ -45,6 +46,7 @@ export async function rejectMember(memberId: string, reason: string): Promise<Re
     .returning({ id: members.id });
   if (updated.length === 0) return { ok: false, error: "이미 처리된 신청입니다" };
 
-  revalidatePath("/admin/approvals");
+  // 사이드바의 대기 건수 배지(레이아웃)까지 갱신
+  revalidatePath("/", "layout");
   return { ok: true };
 }

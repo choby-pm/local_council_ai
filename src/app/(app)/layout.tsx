@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
+import { count, eq } from "drizzle-orm";
 
 import { AppHeader } from "@/components/layout/app-header";
 import { AppSidebar } from "@/components/layout/app-sidebar";
+import { getDb } from "@/db";
+import { members } from "@/db/schema";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { getCurrentMember } from "@/lib/member";
 import { MemberProvider } from "@/lib/member-context";
@@ -22,12 +25,17 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     getNotifications(member, 5),
     getUnreadNotificationCount(member),
   ]);
+  // 관리자에게만 사이드바 "가입 승인"에 대기 건수를 표시
+  const pendingApprovals =
+    member.role === "master"
+      ? (await getDb().select({ n: count() }).from(members).where(eq(members.status, "pending")))[0].n
+      : 0;
   const now = new Date();
 
   return (
     <MemberProvider member={member}>
       <SidebarProvider>
-        <AppSidebar member={member} />
+        <AppSidebar member={member} pendingApprovals={pendingApprovals} />
         <SidebarInset>
           <AppHeader
             member={member}
