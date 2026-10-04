@@ -64,8 +64,9 @@ export function AppHeader({
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
-      <SidebarTrigger />
-      <Separator orientation="vertical" className="h-5" />
+      {/* 데스크톱의 접기 버튼은 사이드바 안에 있다. 모바일은 사이드바가 화면 밖에 숨어 있어 여기서 연다 */}
+      <SidebarTrigger className="md:hidden" />
+      <Separator orientation="vertical" className="h-5 md:hidden" />
 
       <button
         type="button"

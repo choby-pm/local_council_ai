@@ -7,6 +7,8 @@ import {
   Landmark,
   LayoutDashboard,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   ShieldCheck,
   User,
 } from "lucide-react";
@@ -23,6 +25,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import type { Member } from "@/lib/member";
 
@@ -44,6 +47,21 @@ function NavItem({ item, active }: { item: (typeof mainNav)[number]; active: boo
           <item.icon />
           <span>{item.title}</span>
         </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
+  );
+}
+
+// 데스크톱에서 사이드바를 접고 펴는 버튼. 접힌 아이콘 모드에서도 같은 자리에 남는다
+function CollapseToggle() {
+  const { state, toggleSidebar, isMobile } = useSidebar();
+  if (isMobile) return null;
+  const collapsed = state === "collapsed";
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton onClick={toggleSidebar} tooltip={collapsed ? "사이드바 펼치기" : "사이드바 접기"}>
+        {collapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+        <span>사이드바 접기</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
   );
@@ -109,6 +127,7 @@ export function AppSidebar({ member }: { member: Member }) {
             item={{ title: "마이페이지", url: "/mypage/account", icon: User }}
             active={pathname.startsWith("/mypage")}
           />
+          <CollapseToggle />
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
