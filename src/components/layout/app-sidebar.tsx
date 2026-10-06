@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Activity,
   ClipboardCheck,
   Landmark,
   LayoutDashboard,
@@ -43,6 +44,7 @@ const mainNav = [
 const adminNav = [
   { title: "가입 승인", url: "/admin/approvals", icon: ClipboardCheck },
   { title: "계정 관리", url: "/admin/accounts", icon: Users },
+  { title: "품질 대시보드", url: "/admin/quality", icon: Activity },
 ];
 
 function NavItem({ item, active, badge = 0 }: { item: (typeof mainNav)[number]; active: boolean; badge?: number }) {
