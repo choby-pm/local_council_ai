@@ -110,3 +110,32 @@ export function classifyAiError(error: unknown): AiFailure {
   if (cause.statusCode === 400 && /usage limits/i.test(cause.responseBody ?? "")) return "quota";
   return "unavailable";
 }
+
+// 한도 초과(429)를 받은 모델은 잠시 건너뛴다. 서버 인스턴스별 메모리라 정확한 공유는 아니지만,
+// 같은 인스턴스에서 매 질문마다 이미 막힌 모델부터 다시 부르는 낭비를 줄인다.
+const EXHAUSTED_SKIP_MS = 60 * 60 * 1000;
+const exhaustedUntil = new Map<string, number>();
+
+export function markModelExhausted(modelId: string) {
+  exhaustedUntil.set(modelId, Date.now() + EXHAUSTED_SKIP_MS);
+}
+
+/**
+ * 답변을 시도할 모델 순서: 의원이 고른 모델 → 기본 모델 → 나머지 무료 모델.
+ * 무료 티어는 모델마다 한도가 따로라, 고른 모델이 막혀도 다른 무료 모델로 답할 수 있다.
+ * 유료 모델은 의원이 직접 고른 경우에만 쓰고 자동 전환 대상에는 넣지 않는다.
+ */
+export function modelAttemptOrder(selected: string): string[] {
+  const free = MODEL_OPTIONS.filter((m) => !m.paid && (!m.requiresEnv || Boolean(process.env[m.requiresEnv]))).map(
+    (m) => m.id
+  );
+  const order = [...new Set([selected, CHAT_MODEL, ...free])];
+  const now = Date.now();
+  const available = order.filter((id) => (exhaustedUntil.get(id) ?? 0) <= now);
+  // 전부 막혀 있으면 고른 모델로 한 번은 시도 (한도가 이미 풀렸을 수 있음)
+  return available.length > 0 ? available : [selected];
+}
+
+export function modelLabel(modelId: string): string {
+  return MODEL_OPTIONS.find((m) => m.id === modelId)?.label ?? modelId;
+}

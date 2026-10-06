@@ -84,6 +84,8 @@ export const messages = pgTable("messages", {
   kind: messageKindEnum("kind").notNull().default("normal"),
   // 답변을 만든 모델 ("google:gemini-3.6-flash" 형식) — 의원이 고른 모델 기록, 모델별 평가용
   model: text("model"),
+  // 질문을 받고 답변을 저장하기까지 걸린 시간(ms) — 품질 대시보드의 모델별 응답 시간
+  latencyMs: integer("latency_ms"),
   sources: jsonb("sources").$type<
     {
       index: number;

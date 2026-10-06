@@ -48,17 +48,40 @@ function loadSavedModel(options: ChatModelOption[]): string {
 }
 
 // "limit"은 DB에 저장하지 않는 화면 전용 안내(일일 질문 한도 초과)
-type ThreadMessage = Omit<DbMessage, "kind"> & { kind: DbMessage["kind"] | "limit" };
+// fallbackFrom: 고른 모델이 한도 초과라 다른 모델로 자동 전환된 경우 원래 고른 모델 (방금 받은 답변만)
+type ThreadMessage = Omit<DbMessage, "kind"> & { kind: DbMessage["kind"] | "limit"; fallbackFrom?: string | null };
+
+type StreamEvent =
+  | {
+      type: "meta";
+      conversationId: string;
+      userMessage: { id: string; content: string };
+      usage?: QuestionUsage;
+    }
+  | { type: "progress"; label: string }
+  | {
+      type: "done";
+      assistantMessage: {
+        id: string;
+        content: string;
+        trustLevel: TrustLevel | null;
+        kind: DbMessage["kind"];
+        sources: CitationSource[] | null;
+        model: string | null;
+        fallbackFrom: string | null;
+      };
+    };
 
 type QuestionUsage = { used: number; limit: number | null };
 
-function LoadingBubble() {
+function LoadingBubble({ label }: { label: string | null }) {
   return (
     <div className="flex gap-2">
       <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
         <Sparkles className="size-3.5" />
       </div>
       <div className="flex w-64 flex-col gap-2 rounded-2xl rounded-tl-sm border bg-card px-3.5 py-3">
+        {label && <p className="animate-pulse text-xs text-muted-foreground">{label}…</p>}
         <Skeleton className="h-3 w-full" />
         <Skeleton className="h-3 w-4/5" />
         <Skeleton className="h-3 w-3/5" />
@@ -152,6 +175,7 @@ export function ChatThread({
   const [loading, setLoading] = useState(false);
   const [usage, setUsage] = useState<QuestionUsage | null>(null);
   const [model, setModel] = useState("");
+  const [progress, setProgress] = useState<string | null>(null);
 
   useEffect(() => {
     // localStorage는 브라우저에서만 읽을 수 있어 마운트 후 반영
@@ -210,9 +234,9 @@ export function ChatThread({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conversationId: activeConversationId, menu, question, model: model || undefined }),
       });
-      const data = await res.json().catch(() => null);
 
-      if (!res.ok) {
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => null);
         if (data?.code === "daily_limit") {
           // 서버에 저장되지 않은 질문이므로 말풍선을 거두고 입력창에 되돌려 둠
           setMessages((prev) => prev.filter((m) => !m.id.startsWith("pending-")));
@@ -225,37 +249,68 @@ export function ChatThread({
         return;
       }
 
-      if (data.usage) setUsage(data.usage);
+      // 서버가 NDJSON으로 보내는 진행 이벤트를 한 줄씩 읽는다: meta → progress* → done
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let createdConversationId: string | null = null;
 
-      if (!activeConversationId) {
-        setActiveConversationId(data.conversationId);
+      const handleEvent = (event: StreamEvent) => {
+        if (event.type === "meta") {
+          if (event.usage) setUsage(event.usage);
+          if (!activeConversationId) {
+            createdConversationId = event.conversationId;
+            setActiveConversationId(event.conversationId);
+          }
+          setMessages((prev) => [
+            ...prev.filter((m) => !m.id.startsWith("pending-")),
+            { id: event.userMessage.id, role: "user", content: event.userMessage.content, trustLevel: null, kind: "normal", sources: null },
+          ]);
+        } else if (event.type === "progress") {
+          setProgress(event.label);
+        } else if (event.type === "done") {
+          const a = event.assistantMessage;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: a.id,
+              role: "assistant",
+              content: a.content,
+              trustLevel: a.trustLevel,
+              kind: a.kind,
+              sources: a.sources,
+              model: a.model,
+              fallbackFrom: a.fallbackFrom,
+            },
+          ]);
+        }
+      };
+
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let newline: number;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline).trim();
+          buffer = buffer.slice(newline + 1);
+          if (line) handleEvent(JSON.parse(line) as StreamEvent);
+        }
+      }
+
+      // 새 대화는 답변을 다 받은 뒤 목록에 알린다 (먼저 알리면 화면이 다시 그려져 진행 중인 응답을 놓침)
+      if (createdConversationId) {
         onConversationCreated?.({
-          id: data.conversationId,
+          id: createdConversationId,
           title: question.slice(0, 40),
           updatedAt: new Date().toISOString(),
         });
       }
-
-      setMessages((prev) => {
-        const withoutPending = prev.filter((m) => !m.id.startsWith("pending-"));
-        return [
-          ...withoutPending,
-          { id: data.userMessage.id, role: "user", content: data.userMessage.content, trustLevel: null, kind: "normal", sources: null },
-          {
-            id: data.assistantMessage.id,
-            role: "assistant",
-            content: data.assistantMessage.content,
-            trustLevel: data.assistantMessage.trustLevel,
-            kind: data.assistantMessage.kind,
-            sources: data.assistantMessage.sources,
-            model: data.assistantMessage.model,
-          },
-        ];
-      });
     } catch {
       appendNotice("error", "네트워크 연결을 확인한 뒤 다시 시도해주세요.");
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   }
 
@@ -318,11 +373,17 @@ export function ChatThread({
               key={m.id}
               message={m}
               onRetry={canRetry ? () => handleSend(previous.content) : undefined}
-              modelLabel={m.role === "assistant" && m.kind === "normal" ? labelOf(m.model) : undefined}
+              modelLabel={
+                m.role === "assistant" && m.kind === "normal"
+                  ? m.fallbackFrom
+                    ? `${labelOf(m.model)} (${labelOf(m.fallbackFrom)} 한도 초과로 자동 전환)`
+                    : labelOf(m.model)
+                  : undefined
+              }
             />
           );
         })}
-        {loading && <LoadingBubble />}
+        {loading && <LoadingBubble label={progress} />}
       </div>
 
       <div className="flex flex-col gap-1.5 border-t pt-3">

@@ -5,7 +5,15 @@ import type { ModelMessage } from "ai";
 import { getDb } from "@/db";
 import { conversations, messages } from "@/db/schema";
 import { runCouncilAgent, type AgentSource, type DocType } from "@/lib/agent";
-import { classifyAiError, resolveRequestedModel, type AiFailure, type TrustLevel } from "@/lib/ai";
+import {
+  classifyAiError,
+  markModelExhausted,
+  modelAttemptOrder,
+  modelLabel,
+  resolveRequestedModel,
+  type AiFailure,
+  type TrustLevel,
+} from "@/lib/ai";
 import { getActiveMember, type Member } from "@/lib/member";
 import { getQuestionUsage, isOverLimit } from "@/lib/usage";
 import { isUuid } from "@/lib/utils";
@@ -53,9 +61,10 @@ async function answerQuestion(
   question: string,
   docTypes: DocType[],
   history: ModelMessage[],
-  modelId: string
+  modelId: string,
+  onProgress?: (label: string) => void
 ): Promise<Answer> {
-  const result = await runCouncilAgent({ member, docTypes, history, question, modelId });
+  const result = await runCouncilAgent({ member, docTypes, history, question, modelId, onProgress });
 
   // 인용한 근거가 없으면 답변으로 내보내지 않음 (근거 없는 답변 금지 원칙)
   if (result.sources.length === 0) {
@@ -140,47 +149,89 @@ export async function POST(req: NextRequest) {
     .insert(messages)
     .values({ conversationId, role: "user", content: question })
     .returning();
+  const convId = conversationId;
+  const startedAt = Date.now();
 
-  let answer: Answer;
-  try {
-    const history = await loadHistory(conversationId, userMessage.id);
-    answer = await answerQuestion(member, question, docTypes, history, modelId);
-  } catch (error) {
-    // 실패도 대화 기록에 남겨, 질문만 덩그러니 남고 답이 없는 상태를 막음
-    const failure = classifyAiError(error);
-    console.error(`[chat] ${modelId} 호출 실패 (${failure})`, error);
-    answer = { kind: "error", text: FAILURE_MESSAGES[failure], trust: null, sources: [] };
-  }
+  // 답변은 NDJSON 이벤트로 흘려보낸다: meta → progress* → done. 검색에 수십 초가 걸려 진행 상황을 보여주기 위함
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: Record<string, unknown>) =>
+        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
 
-  const sourcesSnapshot = answer.sources;
+      send({
+        type: "meta",
+        conversationId: convId,
+        userMessage: { id: userMessage.id, content: userMessage.content },
+        usage: { used: usage.used + 1, limit: usage.limit },
+      });
+      send({ type: "progress", label: "질문을 살펴보는 중" });
 
-  const [assistantMessage] = await db
-    .insert(messages)
-    .values({
-      conversationId,
-      role: "assistant",
-      content: answer.text,
-      trustLevel: answer.trust,
-      kind: answer.kind,
-      sources: sourcesSnapshot,
-      model: modelId,
-    })
-    .returning();
+      let answer: Answer | null = null;
+      let usedModel = modelId;
+      let lastFailure: AiFailure = "unavailable";
+      try {
+        const history = await loadHistory(convId, userMessage.id);
+        // 고른 모델이 한도 초과면 한도가 남은 다른 무료 모델로 자동 전환 (결정 D-29)
+        for (const candidate of modelAttemptOrder(modelId)) {
+          if (candidate !== modelId) {
+            send({ type: "progress", label: `${modelLabel(usedModel)} 한도 초과 — ${modelLabel(candidate)}(으)로 다시 찾는 중` });
+          }
+          usedModel = candidate;
+          try {
+            answer = await answerQuestion(member, question, docTypes, history, candidate, (label) =>
+              send({ type: "progress", label })
+            );
+            break;
+          } catch (error) {
+            lastFailure = classifyAiError(error);
+            console.error(`[chat] ${candidate} 호출 실패 (${lastFailure})`, error);
+            if (lastFailure !== "quota") break;
+            markModelExhausted(candidate);
+          }
+        }
+      } catch (error) {
+        lastFailure = classifyAiError(error);
+        console.error("[chat] 답변 준비 실패", error);
+      }
 
-  await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, conversationId));
+      // 실패도 대화 기록에 남겨, 질문만 덩그러니 남고 답이 없는 상태를 막음
+      const final: Answer = answer ?? { kind: "error", text: FAILURE_MESSAGES[lastFailure], trust: null, sources: [] };
+      const fallbackFrom = answer && usedModel !== modelId ? modelId : null;
 
-  return NextResponse.json({
-    conversationId,
-    userMessage: { id: userMessage.id, content: userMessage.content },
-    assistantMessage: {
-      id: assistantMessage.id,
-      content: answer.text,
-      trustLevel: answer.trust,
-      kind: answer.kind,
-      sources: sourcesSnapshot,
-      model: modelId,
+      const [assistantMessage] = await db
+        .insert(messages)
+        .values({
+          conversationId: convId,
+          role: "assistant",
+          content: final.text,
+          trustLevel: final.trust,
+          kind: final.kind,
+          sources: final.sources,
+          model: answer ? usedModel : null,
+          latencyMs: Date.now() - startedAt,
+        })
+        .returning();
+      await db.update(conversations).set({ updatedAt: new Date() }).where(eq(conversations.id, convId));
+
+      send({
+        type: "done",
+        assistantMessage: {
+          id: assistantMessage.id,
+          content: final.text,
+          trustLevel: final.trust,
+          kind: final.kind,
+          sources: final.sources,
+          model: assistantMessage.model,
+          fallbackFrom,
+        },
+      });
+      controller.close();
     },
-    usage: { used: usage.used + 1, limit: usage.limit },
+  });
+
+  return new Response(stream, {
+    headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store" },
   });
 }
 

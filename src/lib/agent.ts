@@ -72,6 +72,8 @@ export async function runCouncilAgent(opts: {
   question: string;
   // 의원이 고른 모델 (resolveRequestedModel로 검증된 값)
   modelId: string;
+  // 도구를 쓸 때마다 화면에 보여줄 진행 상황을 알린다
+  onProgress?: (label: string) => void;
 }): Promise<AgentResult> {
   const { member, docTypes } = opts;
   const gathered: AgentSource[] = [];
@@ -89,6 +91,7 @@ export async function runCouncilAgent(opts: {
         query: z.string().describe("찾을 내용 (자연어)"),
       }),
       execute: async ({ query }) => {
+        opts.onProgress?.("법령·조례 문서 찾는 중");
         const embedding = await embedQuery(query);
         const distance = cosineDistance(documentChunks.embedding, embedding);
         const rows = await getDb()
@@ -128,6 +131,7 @@ export async function runCouncilAgent(opts: {
         allCommittees: z.boolean().optional().describe("다른 위원회까지 볼 때만 true"),
       }),
       execute: async ({ department, keyword, year, allCommittees }) => {
+        opts.onProgress?.(`행정사무감사 지적사항 확인 중${department ? ` (${department})` : ""}`);
         const conditions = [eq(auditFindings.council, member.council)];
         if (!allCommittees && member.committee) conditions.push(eq(auditFindings.committee, member.committee));
         if (department) conditions.push(ilike(auditFindings.department, `%${department}%`));
@@ -181,6 +185,7 @@ export async function runCouncilAgent(opts: {
         query: z.string().describe("핵심 단어 하나를 먼저 (예: '벽제수질복원센터', '준공영제 건설교통위원회')"),
       }),
       execute: async ({ query }) => {
+        opts.onProgress?.(`회의록 검색 중 — "${query}" (10~20초 걸립니다)`);
         const hits = await searchMinutes(query);
         return hits.map((h) => ({ uid: h.uid, title: h.title }));
       },
@@ -193,6 +198,7 @@ export async function runCouncilAgent(opts: {
         keyword: z.string().describe("발췌할 부분의 검색어"),
       }),
       execute: async ({ uid, keyword }) => {
+        opts.onProgress?.("회의록 발언 읽는 중");
         const result = await readMinutesExcerpts(uid, keyword);
         if (result.excerpts.length === 0) return { found: false, title: result.title };
         const ref = addSource({
