@@ -7,7 +7,7 @@ import { z } from "zod";
 import { getDb } from "@/db";
 import { auditFindings, documentChunks, documents } from "@/db/schema";
 import { chatModel, embedQuery } from "@/lib/ai";
-import { readMinutesExcerpts, searchMinutes } from "@/lib/goyang-council";
+import { readMinutesExcerpts, searchMemberMinutes, searchMinutes } from "@/lib/goyang-council";
 import type { Member } from "@/lib/member";
 
 export type DocType = "law" | "ordinance" | "meeting" | "budget";
@@ -30,7 +30,7 @@ export type AgentResult = {
 };
 
 // 무료 티어는 모델당 하루 요청 수가 적어(결정 D-20) 한 질문의 단계 수를 작게 묶는다
-const MAX_STEPS = 5;
+const MAX_STEPS = 6;
 
 function systemPrompt(member: Member) {
   const profile = [
@@ -46,7 +46,8 @@ function systemPrompt(member: Member) {
     "어려운 용어는 쉽게 풀어 설명하고, 의원이 다음에 무엇을 하면 되는지 짚어 주세요.\n\n" +
     `[담당 의원]\n${profile}\n\n` +
     "[원칙]\n" +
-    "- 답하기 전에 도구로 근거를 찾으세요. 행정사무감사·지적사항 질문은 getAuditFindings, 의원 발언이나 회의 내용은 searchMinutes → readMinutes, 법령·조례는 searchDocuments를 쓰세요.\n" +
+    "- 답하기 전에 도구로 근거를 찾으세요. 행정사무감사·지적사항 질문은 getAuditFindings, 회의 내용은 searchMinutes → readMinutes, 의원 본인의 과거 발언·질의는 searchMyMinutes → readMinutes, 법령·조례는 searchDocuments를 쓰세요.\n" +
+    "- 지적사항이나 사업을 다룰 때는 searchMyMinutes로 의원 본인이 전에 같은 주제를 질의했는지도 확인해, 있으면 '의원님이 ○○년에 질의하셨습니다'처럼 이어서 짚어 주세요.\n" +
     "- 도구 결과에 있는 내용만 근거로 쓰고, 문장 끝에 도구 결과의 ref 번호를 [1], [2] 형식으로 표기하세요.\n" +
     "- 숫자·날짜·이름을 지어내지 마세요. 찾지 못했으면 찾지 못했다고 말하고, 확인 방법(자료요구 등)을 제안하세요.\n" +
     "- 특별한 말이 없으면 의원의 위원회를 기준으로 범위를 잡으세요.\n" +
@@ -188,6 +189,26 @@ export async function runCouncilAgent(opts: {
         opts.onProgress?.(`회의록 검색 중 — "${query}" (10~20초 걸립니다)`);
         const hits = await searchMinutes(query);
         return hits.map((h) => ({ uid: h.uid, title: h.title }));
+      },
+    }),
+
+    searchMyMinutes: tool({
+      description:
+        "담당 의원 본인이 과거 회의(본회의·상임위·행정사무감사)에서 발언한 회의록을 주제어로 찾습니다 (제10대·제9대). " +
+        "'내가 전에 이 사업을 질의했었나', '작년에 내가 뭐라고 했지' 같은 질문에 쓰세요. " +
+        "결과의 uid로 readMinutes를 이어서 쓰되, keyword에 의원 이름을 넣으면 본인 발언 부분을 읽습니다.",
+      inputSchema: z.object({
+        keyword: z.string().describe("주제어 한 단어 (예: 준공영제, 현수막)"),
+      }),
+      execute: async ({ keyword }) => {
+        opts.onProgress?.(`의원님 과거 발언 찾는 중 — "${keyword}"`);
+        const hits = await searchMemberMinutes(member.name, keyword);
+        if (hits === null) return { found: false, reason: "의회 의원 명단에서 계정 이름을 찾지 못했습니다" };
+        return {
+          found: hits.length > 0,
+          memberName: member.name,
+          minutes: hits.map((h) => ({ uid: h.uid, title: h.title, date: h.date })),
+        };
       },
     }),
 

@@ -96,3 +96,61 @@ export async function readMinutesExcerpts(uid: string, keyword: string, opts: { 
 
   return { uid, title: decode(title), url: `${BASE}/viewer/minutes.do?uid=${uid}`, excerpts };
 }
+
+// 의원별 회의록 검색(/promote/minutes/member.do)은 의원 코드로 찾는다. 코드는 검색 화면의 선택 목록에서 얻고 하루 동안 기억한다
+let memberCodeCache: { at: number; codes: Map<string, string> } | null = null;
+
+async function memberCodes(): Promise<Map<string, string>> {
+  if (memberCodeCache && Date.now() - memberCodeCache.at < 24 * 60 * 60 * 1000) return memberCodeCache.codes;
+  const html = await fetchText(`${BASE}/promote/minutes/member.do`);
+  const select = html.slice(html.indexOf('name="mem_sch"'), html.indexOf("</select>", html.indexOf('name="mem_sch"')));
+  const codes = new Map<string, string>();
+  for (const m of select.matchAll(/<option value='(\d+)'[^>]*>([^<]+)<\/option>/g)) codes.set(m[2].trim(), m[1]);
+  memberCodeCache = { at: Date.now(), codes };
+  return codes;
+}
+
+export type MemberMinutesHit = MinutesHit & { date: string };
+
+/**
+ * 특정 의원이 발언한 회의록을 검색어로 찾는다 (제10대·제9대). 의원 이름이 현역 명단에 없으면 null.
+ * 일반 회의록 검색과 달리 빠르다(1초 이내).
+ */
+export async function searchMemberMinutes(
+  memberName: string,
+  keyword: string,
+  opts: { terms?: number[]; limit?: number } = {}
+): Promise<MemberMinutesHit[] | null> {
+  const code = (await memberCodes()).get(memberName.trim());
+  if (!code) return null;
+  const terms = opts.terms ?? DEFAULT_TERMS;
+  const limit = opts.limit ?? 8;
+
+  const pages = await Promise.all(
+    terms.map((th) =>
+      fetchText(
+        `${BASE}/promote/minutes/member.do?th_sch=${th}&mem_sch=${code}&schwrd=${encodeURIComponent(keyword.trim())}`
+      ).catch(() => "")
+    )
+  );
+
+  const hits: MemberMinutesHit[] = [];
+  for (const html of pages) {
+    for (const row of html.match(/<tr[\s\S]*?<\/tr>/g) ?? []) {
+      const uid = row.match(/\/viewer\/minutes\.do\?uid=(\d+)/)?.[1];
+      if (!uid) continue;
+      // 열: 번호 · 회기 · 차수 · 회의명 · 일자
+      const cells = [...row.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) =>
+        decode(c[1].replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim()
+      );
+      const [, session, round, meeting, date] = cells;
+      hits.push({
+        uid,
+        title: [session, meeting, round].filter(Boolean).join(" "),
+        url: `${BASE}/viewer/minutes.do?uid=${uid}`,
+        date: (date ?? "").replace(/\s*\S+요일$/, ""),
+      });
+    }
+  }
+  return hits.slice(0, limit);
+}
