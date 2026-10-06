@@ -110,7 +110,7 @@ function MessageView({
   return (
     <AssistantMessage
       trust={message.trustLevel ?? undefined}
-      saveable
+      exportable={{ text: message.content, sources: message.sources ?? [] }}
       messageId={message.id}
       footer={
         <>

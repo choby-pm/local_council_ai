@@ -1,11 +1,13 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "@/db";
 import { members } from "@/db/schema";
 import { getActiveMember } from "@/lib/member";
+import { hashPassword } from "@/lib/password";
 import { isUuid } from "@/lib/utils";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -90,4 +92,27 @@ export async function deleteAccount(targetId: string): Promise<Result> {
 
   await getDb().delete(members).where(eq(members.id, targetId));
   return done();
+}
+
+/**
+ * 비밀번호를 잊은 의원에게 임시 비밀번호를 발급한다. 화면에 한 번만 보여주고 저장은 해시로만 한다.
+ * 의원은 로그인 후 마이페이지에서 바로 바꾸도록 안내한다.
+ */
+export async function resetPassword(targetId: string): Promise<{ ok: true; tempPassword: string } | { ok: false; error: string }> {
+  const g = await guard(targetId);
+  if ("error" in g) return { ok: false, error: g.error };
+
+  // 헷갈리는 글자(0/O, 1/l/I)를 뺀 10자
+  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(10);
+  const tempPassword = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
+
+  const updated = await getDb()
+    .update(members)
+    .set({ passwordHash: await hashPassword(tempPassword) })
+    .where(eq(members.id, targetId))
+    .returning({ id: members.id });
+  if (updated.length === 0) return { ok: false, error: "계정을 찾을 수 없습니다" };
+
+  return { ok: true, tempPassword };
 }

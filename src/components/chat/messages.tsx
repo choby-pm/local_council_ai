@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { Bookmark, Sparkles, UserRound } from "lucide-react";
+import { Sparkles, UserRound } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { FeedbackButtons } from "@/components/chat/feedback-buttons";
+import { MessageExport, type ExportSource } from "@/components/chat/message-export";
 import { TrustBadge, type TrustLevel } from "@/components/chat/trust-badge";
 import { cn } from "@/lib/utils";
 
@@ -24,14 +24,15 @@ export function AssistantMessage({
   children,
   footer,
   className,
-  saveable,
+  exportable,
   messageId,
 }: {
   trust?: TrustLevel;
   children: ReactNode;
   footer?: ReactNode;
   className?: string;
-  saveable?: boolean;
+  // 복사·문서로 받기에 쓸 원문과 출처 (일반 답변에만)
+  exportable?: { text: string; sources: ExportSource[] };
   messageId?: string;
 }) {
   return (
@@ -47,12 +48,7 @@ export function AssistantMessage({
         {footer}
         <div className="flex items-center justify-between">
           <FeedbackButtons messageId={messageId} />
-          {saveable && (
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
-              <Bookmark className="size-3.5" />
-              저장
-            </Button>
-          )}
+          {exportable && <MessageExport text={exportable.text} sources={exportable.sources} />}
         </div>
       </div>
     </div>

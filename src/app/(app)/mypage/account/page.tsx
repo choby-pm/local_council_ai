@@ -8,11 +8,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { committeesFor } from "@/lib/committees";
 import { getActiveMember } from "@/lib/member";
 
 import { CommitteePicker } from "./committee-picker";
+import { PasswordForm } from "./password-form";
 
 const statusLabel: Record<string, string> = {
   pending: "승인대기",
@@ -73,11 +73,15 @@ export default async function MyPageAccountPage() {
         </CardContent>
       </Card>
 
-      <Separator />
-
-      <p className="text-xs text-muted-foreground">
-        비밀번호 변경은 로그인 화면의 &quot;비밀번호 재설정&quot;을 이용해주세요.
-      </p>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">비밀번호 변경</CardTitle>
+          <CardDescription>비밀번호를 잊으셨다면 관리자에게 임시 비밀번호 발급을 요청해주세요.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PasswordForm />
+        </CardContent>
+      </Card>
     </div>
   );
 }

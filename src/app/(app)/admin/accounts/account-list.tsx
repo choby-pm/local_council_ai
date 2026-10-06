@@ -28,7 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 
-import { deleteAccount, setAccountActive, setAccountRole } from "./actions";
+import { deleteAccount, resetPassword, setAccountActive, setAccountRole } from "./actions";
 
 export type AccountRow = {
   id: string;
@@ -60,6 +60,7 @@ export function AccountList({ accounts }: { accounts: AccountRow[] }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<(typeof filters)[number]["value"]>("all");
   const [deleteTarget, setDeleteTarget] = useState<AccountRow | null>(null);
+  const [tempPassword, setTempPassword] = useState<{ name: string; username: string | null; password: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
@@ -79,6 +80,16 @@ export function AccountList({ accounts }: { accounts: AccountRow[] }) {
       setBusyId(null);
       if (result.ok) toast.success(success);
       else toast.error(result.error ?? "처리하지 못했습니다");
+    });
+  }
+
+  function issueTempPassword(target: AccountRow) {
+    setBusyId(target.id);
+    startTransition(async () => {
+      const result = await resetPassword(target.id);
+      setBusyId(null);
+      if (result.ok) setTempPassword({ name: target.name, username: target.username, password: result.tempPassword });
+      else toast.error(result.error);
     });
   }
 
@@ -187,6 +198,7 @@ export function AccountList({ accounts }: { accounts: AccountRow[] }) {
                               >
                                 {a.role === "master" ? "관리자 해제" : "관리자로 지정"}
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => issueTempPassword(a)}>비밀번호 초기화</DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-destructive" onClick={() => setDeleteTarget(a)}>
                                 계정 삭제
@@ -203,6 +215,30 @@ export function AccountList({ accounts }: { accounts: AccountRow[] }) {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!tempPassword} onOpenChange={(open) => !open && setTempPassword(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{tempPassword?.name} 임시 비밀번호</AlertDialogTitle>
+            <AlertDialogDescription>
+              이 창을 닫으면 다시 볼 수 없습니다. 의원에게 전달하고, 로그인 후 마이페이지에서 바로 바꾸도록 안내해주세요.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-sm">
+            아이디 {tempPassword?.username ?? "—"} · 비밀번호 {tempPassword?.password}
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                if (tempPassword) navigator.clipboard?.writeText(tempPassword.password).catch(() => {});
+              }}
+            >
+              비밀번호 복사
+            </AlertDialogCancel>
+            <AlertDialogAction>확인</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
