@@ -8,6 +8,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
@@ -304,3 +305,36 @@ export const auditFindings = pgTable(
 );
 
 // MVP 규모(시드 데이터 수십 건)에서는 ANN 인덱스 없이 코사인 유사도 순차 검색(<=>)으로 충분
+
+// 의원이 등록한 관심 사업(키워드). 새로 공개된 회의록에 나오면 개인 알림을 보낸다 (/api/cron/watch)
+export const watchKeywords = pgTable(
+  "watch_keywords",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    keyword: text("keyword").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("watch_keywords_member_keyword_idx").on(t.memberId, t.keyword)]
+);
+
+// 위원회별 행정사무감사 기간·대상. "행정사무감사계획서 작성의 건" 회의록 본문에서 추출 (scripts/sync-audit-schedules.ts)
+export const auditSchedules = pgTable(
+  "audit_schedules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    council: text("council").notNull(),
+    committee: text("committee").notNull(),
+    year: integer("year").notNull(),
+    startDate: text("start_date").notNull(),
+    endDate: text("end_date").notNull(),
+    // 감사 대상 기관·부서 문장 (회의록 원문 그대로)
+    scope: text("scope"),
+    sourceTitle: text("source_title").notNull(),
+    sourceUrl: text("source_url").notNull(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("audit_schedules_scope_idx").on(t.council, t.committee, t.year)]
+);

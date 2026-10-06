@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Bell, Calendar, FileText, FileWarning, Gavel, Scale, type LucideIcon } from "lucide-react";
+import { Bell, Calendar, Eye, FileText, FileWarning, Gavel, Scale, type LucideIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ const typeIcon: Record<NotificationType, LucideIcon> = {
   law: Scale,
   report: Calendar,
   data: FileWarning,
+  watch: Eye,
 };
 
 const filters: { value: "all" | NotificationType; label: string }[] = [

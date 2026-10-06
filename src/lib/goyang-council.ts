@@ -1,6 +1,5 @@
-import "server-only";
-
 // 고양특례시의회 홈페이지를 도구로 감싼다 (공식 API 없음, 결정 D-09).
+// 비밀값이 없어 서버 전용 표시 없이 두고, 크론 라우트와 scripts/에서 함께 쓴다.
 // - 회의록 목록 검색: /promote/minutes/search.do — 대수별, 한 단어 검색만 결과가 나옴, 10~18초 소요
 // - 회의록 본문: /viewer/minutes.do?uid=N — 발언 전문이 HTML 텍스트
 
@@ -71,18 +70,7 @@ export async function readMinutesExcerpts(uid: string, keyword: string, opts: { 
   const window = opts.window ?? 600;
   const max = opts.max ?? 4;
 
-  const html = await fetchText(`${BASE}/viewer/minutes.do?uid=${uid}`);
-  const text = decode(
-    html
-      .replace(/<script[\s\S]*?<\/script>/g, "")
-      .replace(/<style[\s\S]*?<\/style>/g, "")
-      .replace(/<br\s*\/?>/g, "\n")
-      .replace(/<[^>]+>/g, " ")
-  )
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s*\n+/g, "\n");
-
-  const title = html.match(/<title>([^<]*)<\/title>/)?.[1]?.trim() ?? `회의록 ${uid}`;
+  const { title, url, text } = await getMinutesText(uid);
   const words = keyword.trim().split(/\s+/).filter(Boolean);
   const excerpts: string[] = [];
   let from = 0;
@@ -94,7 +82,44 @@ export async function readMinutesExcerpts(uid: string, keyword: string, opts: { 
     from = at + window;
   }
 
-  return { uid, title: decode(title), url: `${BASE}/viewer/minutes.do?uid=${uid}`, excerpts };
+  return { uid, title, url, excerpts };
+}
+
+/** 회의록 한 건의 본문 전체(텍스트). 발언 전문이라 수십만 자일 수 있다 */
+export async function getMinutesText(uid: string) {
+  if (!/^\d+$/.test(uid)) throw new Error("잘못된 회의록 번호");
+  const html = await fetchText(`${BASE}/viewer/minutes.do?uid=${uid}`);
+  const text = decode(
+    html
+      .replace(/<script[\s\S]*?<\/script>/g, "")
+      .replace(/<style[\s\S]*?<\/style>/g, "")
+      .replace(/<br\s*\/?>/g, "\n")
+      .replace(/<[^>]+>/g, " ")
+  )
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n+/g, "\n");
+  const title = decode(html.match(/<title>([^<]*)<\/title>/)?.[1]?.trim() ?? `회의록 ${uid}`);
+  return { uid, title, url: `${BASE}/viewer/minutes.do?uid=${uid}`, text };
+}
+
+/** 최근 공개된 회의록 목록 (최근회의록 메뉴, 최신순, 페이지당 10건) */
+export async function listRecentMinutes(pages = 2): Promise<(MinutesHit & { date: string })[]> {
+  const hits: (MinutesHit & { date: string })[] = [];
+  for (let page = 1; page <= pages; page++) {
+    const html = await fetchText(`${BASE}/promote/minutes/late.do?page=${page}`);
+    for (const row of html.match(/<tr[\s\S]*?<\/tr>/g) ?? []) {
+      const link = row.match(/href="\/viewer\/minutes\.do\?uid=(\d+)[^"]*"\s+title="([^"]+)"/);
+      if (!link) continue;
+      const date = row.match(/(\d{4})\.(\d{2})\.(\d{2})/);
+      hits.push({
+        uid: link[1],
+        title: decode(link[2]).replace(/\s+/g, " ").replace(/^고양특례시의회\s*/, "").trim(),
+        url: `${BASE}/viewer/minutes.do?uid=${link[1]}`,
+        date: date ? `${date[1]}-${date[2]}-${date[3]}` : "",
+      });
+    }
+  }
+  return hits;
 }
 
 // 의원별 회의록 검색(/promote/minutes/member.do)은 의원 코드로 찾는다. 코드는 검색 화면의 선택 목록에서 얻고 하루 동안 기억한다

@@ -14,7 +14,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { formatAuditPeriod, getAuditSchedule } from "@/lib/audit-schedules";
 import { getActiveMember, type Member } from "@/lib/member";
+
+import { cn } from "@/lib/utils";
 
 import { DashboardAsk } from "./dashboard-ask";
 
@@ -63,9 +66,11 @@ export default async function DashboardPage() {
   // (app) 레이아웃이 비활성 회원을 리다이렉트하지만, 페이지는 레이아웃과 병렬 렌더링되므로 여기서도 확인
   if (!member) return null;
 
-  const [agendaNews, meetingNews] = await Promise.all([
+  const now = new Date();
+  const [agendaNews, meetingNews, schedule] = await Promise.all([
     getDocumentNews(member, ["ordinance"]),
     getDocumentNews(member, ["meeting", "budget"]),
+    member.committee ? getAuditSchedule(member.council, member.committee, now) : null,
   ]);
 
   return (
@@ -80,11 +85,23 @@ export default async function DashboardPage() {
       <div className="flex items-center gap-3 rounded-lg border bg-card px-4 py-3">
         <ClipboardList className="size-4 shrink-0 text-muted-foreground" />
         <div className="flex-1">
-          <p className="text-sm font-medium">행정사무감사 준비</p>
+          <p className="text-sm font-medium">
+            {schedule && schedule.status !== "done"
+              ? `${schedule.year}년 행정사무감사 ${formatAuditPeriod(schedule)}`
+              : "행정사무감사 준비"}
+            {schedule?.status === "upcoming" && (
+              <span className={cn("ml-2", schedule.daysLeft !== null && schedule.daysLeft <= 14 && "text-destructive")}>
+                D-{schedule.daysLeft}
+              </span>
+            )}
+            {schedule?.status === "ongoing" && <span className="ml-2 text-destructive">감사 진행 중</span>}
+          </p>
           <p className="text-xs text-muted-foreground">
             {member.committee
-              ? `${member.committee} 소관 부서의 작년 지적사항 중 다시 물어볼 만한 질의 후보를 정리했습니다.`
-              : "마이페이지에서 소속 상임위를 고르면 위원회에 맞춘 질의 후보를 정리해 드립니다."}
+              ? schedule?.scope && schedule.status !== "done"
+                ? `감사 대상: ${schedule.scope}`
+                : `${member.committee} 소관 부서의 작년 지적사항 중 다시 물어볼 만한 질의 후보를 정리했습니다.`
+              : "마이페이지에서 소속 상임위를 고르면 위원회에 맞춘 감사 일정과 질의 후보를 보여드립니다."}
           </p>
         </div>
         <Button asChild size="sm" variant="outline" className="shrink-0">

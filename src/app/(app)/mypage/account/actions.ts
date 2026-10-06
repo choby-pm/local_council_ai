@@ -1,10 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { members } from "@/db/schema";
+import { members, watchKeywords } from "@/db/schema";
 import { committeesFor } from "@/lib/committees";
 import { getActiveMember } from "@/lib/member";
 import { hashPassword, verifyPassword } from "@/lib/password";
@@ -39,5 +39,37 @@ export async function changePassword(current: string, next: string) {
   }
 
   await db.update(members).set({ passwordHash: await hashPassword(next) }).where(eq(members.id, member.id));
+  return { ok: true as const };
+}
+
+const MAX_WATCH_KEYWORDS = 10;
+
+/** 관심 사업(키워드) 등록 — 새 회의록에 나오면 매일 아침 알림 (src/lib/watch.ts) */
+export async function addWatchKeyword(raw: string) {
+  const member = await getActiveMember();
+  if (!member) return { ok: false as const, error: "이용 권한이 없습니다" };
+  const keyword = raw.trim().replace(/\s+/g, " ");
+  if (keyword.length < 2 || keyword.length > 20) {
+    return { ok: false as const, error: "관심 사업은 2~20자로 입력해주세요" };
+  }
+
+  const db = getDb();
+  const existing = await db.select({ id: watchKeywords.id }).from(watchKeywords).where(eq(watchKeywords.memberId, member.id));
+  if (existing.length >= MAX_WATCH_KEYWORDS) {
+    return { ok: false as const, error: `관심 사업은 ${MAX_WATCH_KEYWORDS}개까지 등록할 수 있습니다` };
+  }
+
+  await db.insert(watchKeywords).values({ memberId: member.id, keyword }).onConflictDoNothing();
+  revalidatePath("/mypage/account");
+  return { ok: true as const };
+}
+
+export async function removeWatchKeyword(id: string) {
+  const member = await getActiveMember();
+  if (!member) return { ok: false as const, error: "이용 권한이 없습니다" };
+  await getDb()
+    .delete(watchKeywords)
+    .where(and(eq(watchKeywords.id, id), eq(watchKeywords.memberId, member.id)));
+  revalidatePath("/mypage/account");
   return { ok: true as const };
 }

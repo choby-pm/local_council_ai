@@ -8,11 +8,16 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { asc, eq } from "drizzle-orm";
+
+import { getDb } from "@/db";
+import { watchKeywords } from "@/db/schema";
 import { committeesFor } from "@/lib/committees";
 import { getActiveMember } from "@/lib/member";
 
 import { CommitteePicker } from "./committee-picker";
 import { PasswordForm } from "./password-form";
+import { WatchKeywords } from "./watch-keywords";
 
 const statusLabel: Record<string, string> = {
   pending: "승인대기",
@@ -24,6 +29,12 @@ const statusLabel: Record<string, string> = {
 export default async function MyPageAccountPage() {
   const member = await getActiveMember();
   if (!member) redirect("/login");
+
+  const watches = await getDb()
+    .select({ id: watchKeywords.id, keyword: watchKeywords.keyword })
+    .from(watchKeywords)
+    .where(eq(watchKeywords.memberId, member.id))
+    .orderBy(asc(watchKeywords.createdAt));
 
 
   const accountFields = [
@@ -56,6 +67,18 @@ export default async function MyPageAccountPage() {
             committees={committeesFor(member.council)}
             current={member.committee}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">관심 사업</CardTitle>
+          <CardDescription>
+            등록한 사업이 새로 공개된 회의록에 나오면 매일 아침 알림으로 알려드립니다. 최대 10개까지 등록할 수 있습니다.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <WatchKeywords items={watches} />
         </CardContent>
       </Card>
 

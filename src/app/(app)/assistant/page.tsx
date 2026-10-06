@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChatMenuPanel } from "@/components/chat/chat-menu-panel";
 import { chatModelOptions } from "@/lib/ai";
 import { getAuditSuggestions } from "@/lib/audit";
+import { formatAuditPeriod, getAuditSchedule } from "@/lib/audit-schedules";
 import { getActiveMember } from "@/lib/member";
 
 // 서비스의 중심 화면. 법령·조례, 회의록, 행감 지적사항을 에이전트가 도구로 찾아 답한다.
@@ -12,12 +13,26 @@ export default async function AssistantPage({ searchParams }: PageProps<"/assist
   if (!member) return null;
 
   const { q } = await searchParams;
-  const suggestions = member.committee ? await getAuditSuggestions(member.council, member.committee) : [];
+  const now = new Date();
+  const [suggestions, schedule] = member.committee
+    ? await Promise.all([
+        getAuditSuggestions(member.council, member.committee),
+        getAuditSchedule(member.council, member.committee, now),
+      ])
+    : [[], null];
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col gap-4 md:h-[calc(100vh-6.5rem)]">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">AI 비서</h1>
+        <h1 className="flex flex-wrap items-baseline gap-x-3 text-2xl font-semibold tracking-tight">
+          AI 비서
+          {schedule && schedule.status !== "done" && (
+            <span className="text-sm font-normal text-muted-foreground">
+              {schedule.committee} 행정사무감사 {formatAuditPeriod(schedule)}
+              {schedule.status === "upcoming" ? ` · D-${schedule.daysLeft}` : " · 진행 중"}
+            </span>
+          )}
+        </h1>
         <p className="text-sm text-muted-foreground">
           법령·조례, 회의록, 행정사무감사 지적사항을 찾아 출처와 함께 답하고, 질의서·자료요구서 초안을 만들어 드립니다.
           {!member.committee && (

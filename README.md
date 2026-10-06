@@ -146,6 +146,7 @@ npx dotenv -e .env.local -- npx tsx scripts/enable-extensions.ts
 npx dotenv -e .env.local -- npx drizzle-kit push
 npx dotenv -e .env.local -- npx tsx scripts/seed-documents.ts
 npx dotenv -e .env.local -- npx tsx scripts/extract-audit-findings.ts 2025 건설교통  # 행감 지적사항 (Gemini 1회)
+npx dotenv -e .env.local -- npx tsx scripts/sync-audit-schedules.ts                 # 행감 일정
 
 npm run dev
 ```
@@ -165,6 +166,7 @@ npx dotenv -e .env.local -- npx tsx scripts/create-account.ts <아이디> <비�
 | `DATABASE_URL_UNPOOLED` | 아니오 | 마이그레이션·확장 설치용 직접 연결 (없으면 `DATABASE_URL` 사용) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | 예 | 임베딩과 기본 답변 모델(Gemini) 호출용 |
 | `CHAT_MODEL` | 아니오 | 기본 답변 모델. `google:<모델ID>` 또는 `anthropic:<모델ID>` (기본 `google:gemini-3.6-flash`). 의원은 AI 비서에서 다른 모델을 고를 수 있음 |
+| `CRON_SECRET` | 배포 시 예 | 매일 아침 관심 사업 알림·행감 일정 갱신 크론(/api/cron/watch) 호출 확인용 비밀값 |
 | `GROQ_API_KEY` | 아니오 | 있으면 GPT-OSS 120B·20B(Groq 무료 티어)가 모델 목록에 추가됨 |
 | `ALLOW_PAID_MODELS` | 아니오 | `true`일 때만 유료 프로바이더(anthropic) 허용 |
 | `ANTHROPIC_API_KEY` | 아니오 | `CHAT_MODEL`이 anthropic일 때 필요 |
@@ -185,6 +187,7 @@ npx dotenv -e .env.local -- npx tsx scripts/create-account.ts <아이디> <비�
 
 | 날짜 | 내용 |
 | --- | --- |
+| 2026-10-06 | 행감 일정(D-day) 표시, 관심 사업 등록과 매일 아침 회의록 알림(Vercel Cron) |
 | 2026-10-06 | 내 발언 찾기: 의원 본인의 과거 회의 발언을 찾는 비서 도구 (의회 의원별 회의록 검색) |
 | 2026-10-06 | 관리자 품질 대시보드: 답변 유형, 모델별 답변 수·정상 비율·응답 시간·피드백, 싫어요 사유와 최근 사례 |
 | 2026-10-06 | 답변 진행 상황 단계별 표시, 무료 한도 초과 시 다른 무료 모델로 자동 전환, 응답 시간 기록 / 답변 복사·문서로 받기, 비밀번호 변경·관리자 초기화 |
@@ -211,7 +214,7 @@ npx dotenv -e .env.local -- npx tsx scripts/create-account.ts <아이디> <비�
 
 | 문서 | 내용 |
 | --- | --- |
-| [의사결정 기록](docs/decisions.md) | 단계별 결정 30건의 대안·이유·영향, 아직 정하지 않은 것 |
+| [의사결정 기록](docs/decisions.md) | 단계별 결정 32건의 대안·이유·영향, 아직 정하지 않은 것 |
 | [01. 문제 정의](docs/01-problem-definition.md) | 사용자, 문제, 핵심 업무 선정 근거, 성공 지표, 범위 밖 항목 |
 | [02. Discovery](docs/02-discovery.md) | 사용자 접근이 불가능할 때의 대체 조사, 가설과 검증 계획 |
 | [03. 데이터와 구조](docs/03-data-and-architecture.md) | 데이터 유형별 조회 방식 결정 기록, 시스템 구조, 알려진 제약 |

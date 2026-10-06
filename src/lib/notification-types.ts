@@ -5,6 +5,7 @@ export const NOTIFICATION_TYPE_LABELS = {
   law: "조례·법령",
   report: "보고서",
   data: "데이터",
+  watch: "관심 사업",
 } as const;
 
 export type NotificationType = keyof typeof NOTIFICATION_TYPE_LABELS;
