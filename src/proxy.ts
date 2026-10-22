@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth-constants";
 
 // /api/cron은 Vercel 크론이 쿠키 없이 호출한다 — 라우트에서 CRON_SECRET으로 따로 확인
-const PUBLIC_PATHS = ["/login", "/signup", "/api/cron"];
+const PUBLIC_PATHS = ["/login", "/signup", "/demo", "/api/cron"];
 
 // 낙관적 검사: 세션 쿠키 유무만 본다. 세션의 실제 유효성과 회원 상태는
 // getCurrentMember()/getActiveMember()가 (app) 레이아웃·API 라우트에서 DB로 확인한다.

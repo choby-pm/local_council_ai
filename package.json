@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:chat": "node --import tsx scripts/check-chat-regressions.mts"
+    "test:chat": "node --import tsx scripts/check-chat-regressions.mts",
+    "test:demo": "node --import tsx scripts/check-demo.mts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.71",

@@ -57,6 +57,14 @@ export function LoginForm() {
           </Button>
         </CardContent>
       </form>
+      <CardContent className="flex flex-col gap-2 pt-4">
+        <Button asChild variant="outline" className="w-full">
+          <Link href="/demo">로그인 없이 데모 체험</Link>
+        </Button>
+        <p className="text-center text-xs text-muted-foreground">
+          가입 없이 예시 질문과 문서 작성 흐름을 체험하세요.
+        </p>
+      </CardContent>
       <CardFooter className="justify-center border-t pt-4">
         <p className="text-sm text-muted-foreground">
           아직 계정이 없으신가요?{" "}
