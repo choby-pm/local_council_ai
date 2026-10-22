@@ -1,31 +1,58 @@
-import assert from "node:assert/strict";
-import { createRequire } from "node:module";
+﻿import assert from "node:assert/strict";
+import { createRequire, registerHooks } from "node:module";
 import { NextRequest } from "next/server";
-import { DEMO_QUESTIONS, DEMO_SOURCES, demoAnswer } from "../src/lib/demo.ts";
+import { neonConfig } from "@neondatabase/serverless";
+import { DEMO_QUESTIONS } from "../src/lib/demo.ts";
+registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === "server-only") return { url: new URL("../node_modules/next/dist/compiled/server-only/empty.js", import.meta.url).href, shortCircuit: true };
+  return nextResolve(specifier, context);
+} });
 const proxy = createRequire(import.meta.url)("../src/proxy.ts").default;
+const { demoRequestSchema, demoClientKey, reserveDemoQuestion } = await import("../src/lib/demo-usage.ts");
+const originalVercel = process.env.VERCEL;
+process.env.VERCEL = "1";
+assert.equal(demoClientKey(new Headers()), null);
+assert.equal(demoClientKey(new Headers({"x-forwarded-for":"invalid"})), null);
+const key = demoClientKey(new Headers({"x-forwarded-for":"203.0.113.5"}))!;
+assert.match(key, /^[a-f0-9]{64}$/);
+assert.equal(key, demoClientKey(new Headers({"x-forwarded-for":"203.0.113.5",cookie:"demo=changed"})));
+assert.equal(demoRequestSchema.safeParse({question:"x".repeat(1001)}).success,false);
+assert.equal(demoRequestSchema.safeParse({question:"hi",history:[{role:"system",content:"bypass"}]}).success,false);
+assert.equal(demoRequestSchema.safeParse({question:"hi",history:Array(7).fill({role:"user",content:"hi"})}).success,false);
+for(const question of DEMO_QUESTIONS) assert.equal(demoRequestSchema.safeParse({question}).success,true);
+assert.equal(proxy(new NextRequest("https://example.com/demo/chat")).headers.get("x-middleware-next"),"1");
+for(const path of ["/api/chat","/api/conversations","/api/feedback"]) assert.equal(proxy(new NextRequest(`https://example.com${path}`)).status,401);
+for(const path of ["/assistant","/admin/accounts"]) assert.equal(proxy(new NextRequest(`https://example.com${path}`)).headers.get("location"),"https://example.com/login");
 
-const originalFetch = globalThis.fetch;
-globalThis.fetch = async () => { throw new Error("데모는 외부 요청을 보내면 안 됨"); };
+process.env.DATABASE_URL = "postgresql://test:test@ep-test.us-east-2.aws.neon.tech/test";
+const originalFetch=globalThis.fetch;
+const originalNeonFetch=neonConfig.fetchFunction;
+let captured: {query:string;params:string[]} | null=null;
+let exhausted=false;
+globalThis.fetch=async (_url,init)=>{
+ captured=JSON.parse(String(init?.body));
+ if(exhausted)return Response.json({message:"quota exhausted",code:"22012",severity:"ERROR"},{status:400});
+ return Response.json({fields:[{name:"granted",dataTypeID:23},{name:"used",dataTypeID:23}],rows:[["1","1"]],rowCount:1,command:"SELECT"});
+};
+neonConfig.fetchFunction=globalThis.fetch;
 try {
-  for (const question of DEMO_QUESTIONS) {
-    const answer = demoAnswer(question);
-    assert.match(answer.text, /예시/);
-    assert.ok(answer.sources.length > 0);
-  }
-  assert.match(demoAnswer(DEMO_QUESTIONS[1]).text, /질의서 예시/);
-  assert.match(demoAnswer(DEMO_QUESTIONS[2]).text, /자료요구서 예시/);
-  assert.match(demoAnswer("예시에 없는 질문").text, /서버나 AI에 전송되지 않습니다/);
-  for (const source of DEMO_SOURCES) {
-    assert.ok(["www.goyangcouncil.go.kr", "www.law.go.kr"].includes(new URL(source.sourceUrl!).hostname));
-  }
-  assert.equal(proxy(new NextRequest("https://example.com/demo")).headers.get("x-middleware-next"), "1");
-  for (const path of ["/api/chat", "/api/conversations", "/api/feedback"]) {
-    assert.equal(proxy(new NextRequest(`https://example.com${path}`)).status, 401, "데모가 실제 API 권한을 열면 안 됨");
-  }
-  for (const path of ["/assistant", "/admin/accounts"]) {
-    assert.equal(proxy(new NextRequest(`https://example.com${path}`)).headers.get("location"), "https://example.com/login");
-  }
+ assert.equal(await reserveDemoQuestion(key),1);
+ const query=captured as unknown as {query:string;params:string[]};
+ assert.match(query.query,/1 \/ count\(\*\)::integer/);
+ assert.ok(query.params.includes("100"));
+ assert.ok(query.params.includes("10"));
+ assert.ok(query.params.includes("15"));
+ assert.ok(query.params.includes(key));
+ assert.doesNotMatch(query.query,/members|conversations|messages/);
+ exhausted=true;
+ assert.equal(await reserveDemoQuestion(key),null);
+ if(process.env.DEMO_QUERY_OUTPUT){
+  const {writeFileSync}=await import('node:fs');
+  writeFileSync(process.env.DEMO_QUERY_OUTPUT,JSON.stringify(query));
+ }
 } finally {
-  globalThis.fetch = originalFetch;
+ globalThis.fetch=originalFetch;
+ neonConfig.fetchFunction=originalNeonFetch;
+ if(originalVercel===undefined)delete process.env.VERCEL;else process.env.VERCEL=originalVercel;
 }
-console.log("PASS: 데모 예시 응답·공식 참고 링크·네트워크 미사용·실제 API 접근 차단");
+console.log("PASS: 데모 입력 검증·IP 식별·서버 한도 SQL·실제 계정 API 분리");

@@ -8,6 +8,13 @@
       "when": 1792668673234,
       "tag": "0000_daily_question_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792679256912,
+      "tag": "0001_demo_ai_usage",
+      "breakpoints": true
     }
   ]
 }

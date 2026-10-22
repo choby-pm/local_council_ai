@@ -40,7 +40,9 @@ export function sourcesForAnswer(text: string, sources: AgentSource[]): AgentSou
   return sources.filter((source) => cited.has(source.index));
 }
 
-function systemPrompt(member: Member) {
+type CouncilProfile = Pick<Member, "name" | "council" | "committee" | "district">;
+
+function systemPrompt(member: CouncilProfile) {
   const profile = [
     `의원: ${member.name}`,
     `소속: ${member.council}${member.committee ? ` ${member.committee}` : ""}`,
@@ -79,7 +81,7 @@ function systemPrompt(member: Member) {
  * 의회 범위(테넌시)는 각 도구의 쿼리가 member.council로 강제한다 — 모델 입력으로 바꿀 수 없음.
  */
 export async function runCouncilAgent(opts: {
-  member: Member;
+  member: CouncilProfile;
   docTypes: DocType[];
   history: ModelMessage[];
   question: string;
@@ -87,6 +89,7 @@ export async function runCouncilAgent(opts: {
   modelId: string;
   // 도구를 쓸 때마다 화면에 보여줄 진행 상황을 알린다
   onProgress?: (label: string) => void;
+  demo?: boolean;
 }): Promise<AgentResult> {
   const { member, docTypes } = opts;
   const gathered: AgentSource[] = [];
@@ -312,12 +315,14 @@ export async function runCouncilAgent(opts: {
 
   const { text } = await generateText({
     model: chatModel(opts.modelId),
-    system: systemPrompt(opts.member),
+    system: systemPrompt(opts.member) + (opts.demo ? "\n[공개 데모] 실제 의원 계정이 아닌 체험용 프로필입니다. 공개 근거 조회와 문서 작성을 돕고, 개인의 과거 발언 검색은 하지 마세요." : ""),
     messages: [...opts.history, { role: "user", content: opts.question }],
     tools,
-    stopWhen: isStepCount(MAX_STEPS),
+    activeTools: opts.demo ? ["searchLegislation", "readLegislation", "getAuditFindings", "searchMinutes", "readMinutes"] : undefined,
+    stopWhen: isStepCount(opts.demo ? 4 : MAX_STEPS),
+    ...(opts.demo ? { maxOutputTokens: 2000, timeout: { totalMs: 60000, toolMs: 25000 } } : {}),
     // 재시도도 하루 요청 한도를 소모하므로 최소로
-    maxRetries: 1,
+    maxRetries: opts.demo ? 0 : 1,
     providerOptions: {
       google: { thinkingConfig: { thinkingBudget: 0 } },
       anthropic: { effort: "low" },

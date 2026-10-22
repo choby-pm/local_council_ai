@@ -60,6 +60,14 @@ export const dailyQuestionUsage = pgTable("daily_question_usage", {
   used: integer("used").notNull().default(0),
 }, (t) => [primaryKey({ columns: [t.memberId, t.day] })]);
 
+// 공개 데모 전용 카운터. 질문·대화·원본 IP는 저장하지 않는다.
+export const demoQuestionUsage = pgTable("demo_question_usage", {
+  key: text("key").notNull(),
+  day: date("day").notNull(),
+  used: integer("used").notNull(),
+  lastRequestedAt: timestamp("last_requested_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [primaryKey({ columns: [t.key, t.day] })]);
+
 // assistant: 통합 AI 비서. 나머지는 메뉴 통합 이전 대화 보존용.
 export const menuEnum = pgEnum("menu", ["laws", "meetings", "budget", "reports", "assistant"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant"]);
