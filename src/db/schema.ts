@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -52,7 +53,14 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
-// assistant: 통합 AI 비서. laws·meetings·budget·reports는 메뉴 통합 이전 대화 보존용
+// 대화 삭제와 무관한 일일 사용량. 회원·날짜별 충돌 갱신으로 동시 요청도 제한한다.
+export const dailyQuestionUsage = pgTable("daily_question_usage", {
+  memberId: uuid("member_id").notNull().references(() => members.id, { onDelete: "cascade" }),
+  day: date("day").notNull(),
+  used: integer("used").notNull().default(0),
+}, (t) => [primaryKey({ columns: [t.memberId, t.day] })]);
+
+// assistant: 통합 AI 비서. 나머지는 메뉴 통합 이전 대화 보존용.
 export const menuEnum = pgEnum("menu", ["laws", "meetings", "budget", "reports", "assistant"]);
 export const messageRoleEnum = pgEnum("message_role", ["user", "assistant"]);
 export const trustLevelEnum = pgEnum("trust_level", ["high", "medium", "low"]);

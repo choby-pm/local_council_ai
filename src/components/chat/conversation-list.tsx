@@ -51,7 +51,7 @@ function ConversationRow({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing && e.keyCode !== 229) {
               onRename(draft.trim() || item.title);
               setEditing(false);
             }

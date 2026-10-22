@@ -15,7 +15,7 @@ import {
   type TrustLevel,
 } from "@/lib/ai";
 import { getActiveMember, type Member } from "@/lib/member";
-import { getQuestionUsage, isOverLimit } from "@/lib/usage";
+import { getQuestionUsage, reserveQuestion } from "@/lib/usage";
 import { isUuid } from "@/lib/utils";
 
 const MENU_DOC_TYPES: Record<string, DocType[]> = {
@@ -107,19 +107,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 일일 한도 초과 시 대화·메시지를 만들지 않고 바로 거절
-  const usage = await getQuestionUsage(member.id);
-  if (isOverLimit(usage)) {
-    return NextResponse.json(
-      {
-        error: `오늘 사용할 수 있는 질문 ${usage.limit}회를 모두 사용했습니다. 내일 0시(한국 시간)에 다시 이용할 수 있습니다.`,
-        code: "daily_limit",
-        usage,
-      },
-      { status: 429 }
-    );
-  }
-
   const db = getDb();
 
   if (conversationId) {
@@ -133,7 +120,18 @@ export async function POST(req: NextRequest) {
     if (!owned) {
       return NextResponse.json({ error: "대화를 찾을 수 없습니다" }, { status: 404 });
     }
-  } else {
+  }
+
+  const usage = await reserveQuestion(member.id);
+  if (!usage) {
+    return NextResponse.json({
+      error: "오늘 사용할 수 있는 질문을 모두 사용했습니다. 내일 0시(한국 시간)에 다시 이용할 수 있습니다.",
+      code: "daily_limit",
+      usage: await getQuestionUsage(member.id),
+    }, { status: 429 });
+  }
+
+  if (!conversationId) {
     const [conv] = await db
       .insert(conversations)
       .values({
@@ -163,7 +161,7 @@ export async function POST(req: NextRequest) {
         type: "meta",
         conversationId: convId,
         userMessage: { id: userMessage.id, content: userMessage.content },
-        usage: { used: usage.used + 1, limit: usage.limit },
+        usage,
       });
       send({ type: "progress", label: "질문을 살펴보는 중" });
 

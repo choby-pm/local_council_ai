@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import {
   ChatThread,
@@ -10,10 +11,19 @@ import {
 } from "@/components/chat/chat-thread";
 import { ConversationList, type ConversationItem } from "@/components/chat/conversation-list";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ErrorState } from "@/components/chat/state-panels";
 
 type Menu = "laws" | "meetings" | "budget" | "assistant";
 
 type ApiConversation = { id: string; title: string; updatedAt: string };
+
+async function checkedResponse(response: Response) {
+  if (response.status === 401 || response.status === 403) {
+    throw new Error("로그인 상태와 이용 권한을 확인해주세요. 다시 로그인한 뒤 시도할 수 있습니다.");
+  }
+  if (!response.ok) throw new Error("대화를 불러오거나 변경하지 못했습니다. 다시 시도해주세요.");
+  return response.json();
+}
 type ApiMessage = {
   id: string;
   role: "user" | "assistant";
@@ -53,11 +63,15 @@ export function ChatMenuPanel({
   const [messages, setMessages] = useState<DbMessage[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [messageError, setMessageError] = useState<string | null>(null);
+  const error = listError ?? messageError;
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
     fetch(`/api/conversations?menu=${menu}`)
-      .then((r) => r.json())
+      .then(checkedResponse)
       .then((data: { conversations: ApiConversation[] }) => {
         if (cancelled) return;
         setItems(data.conversations.map((c) => ({ id: c.id, title: c.title, updatedAt: formatUpdatedAt(c.updatedAt) })));
@@ -66,13 +80,15 @@ export function ChatMenuPanel({
         if (data.conversations.length > 0 && !initialQuestion && suggestions.length === 0) {
           setActiveId(data.conversations[0].id);
         }
-        setLoadingList(false);
-      });
+        setListError(null);
+      })
+      .catch((err: Error) => { if (!cancelled) setListError(err.message); })
+      .finally(() => { if (!cancelled) setLoadingList(false); });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menu]);
+  }, [menu, retry]);
 
   useEffect(() => {
     if (!activeId) return;
@@ -81,7 +97,7 @@ export function ChatMenuPanel({
       if (!cancelled) setLoadingMessages(true);
     });
     fetch(`/api/conversations/${activeId}/messages`)
-      .then((r) => r.json())
+      .then(checkedResponse)
       .then((data: { messages: ApiMessage[] }) => {
         if (cancelled) return;
         setMessages(
@@ -95,40 +111,52 @@ export function ChatMenuPanel({
             model: m.model,
           }))
         );
-        setLoadingMessages(false);
-      });
+        setMessageError(null);
+      })
+      .catch((err: Error) => { if (!cancelled) setMessageError(err.message); })
+      .finally(() => { if (!cancelled) setLoadingMessages(false); });
     return () => {
       cancelled = true;
     };
-  }, [activeId]);
+  }, [activeId, retry]);
 
   async function handleCreate() {
-    const res = await fetch("/api/conversations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ menu }),
-    });
-    const data = await res.json();
-    setItems((prev) => [{ id: data.conversation.id, title: data.conversation.title, updatedAt: "방금 전" }, ...prev]);
-    setActiveId(data.conversation.id);
+    try {
+      const res = await fetch("/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ menu }),
+      });
+      const data = await checkedResponse(res);
+      setItems((prev) => [{ id: data.conversation.id, title: data.conversation.title, updatedAt: "방금 전" }, ...prev]);
+      setActiveId(data.conversation.id);
+      setMessageError(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "대화를 만들지 못했습니다");
+    }
   }
 
   async function handleRename(id: string, title: string) {
-    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, title } : i)));
-    await fetch(`/api/conversations/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    });
+    try {
+      const data = await checkedResponse(await fetch(`/api/conversations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      }));
+      setItems((prev) => prev.map((i) => (i.id === id ? { ...i, title: data.conversation.title } : i)));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "대화 이름을 변경하지 못했습니다");
+    }
   }
 
   async function handleDelete(id: string) {
-    setItems((prev) => {
-      const next = prev.filter((i) => i.id !== id);
-      if (id === activeId) setActiveId(next[0]?.id ?? "");
-      return next;
-    });
-    await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+    try {
+      await checkedResponse(await fetch(`/api/conversations/${id}`, { method: "DELETE" }));
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      if (id === activeId) setActiveId("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "대화를 삭제하지 못했습니다");
+    }
   }
 
   if (loadingList) {
@@ -150,7 +178,12 @@ export function ChatMenuPanel({
         onRename={handleRename}
         onDelete={handleDelete}
       />
-      {loadingMessages ? (
+      {error ? (
+        <div className="flex-1 space-y-3">
+          <ErrorState description={error} onRetry={() => setRetry((value) => value + 1)} />
+          <a className="text-sm underline" href="/login">다시 로그인</a>
+        </div>
+      ) : loadingMessages ? (
         <div className="flex flex-1 flex-col gap-3 py-2">
           <Skeleton className="h-16 w-3/4" />
           <Skeleton className="h-16 w-2/3 self-end" />

@@ -41,7 +41,7 @@ export function AssistantMessage({
         <Sparkles className="size-3.5" />
       </div>
       <div className={cn("flex max-w-[90%] flex-col gap-2", className)}>
-        {trust && <TrustBadge level={trust} />}
+        {trust && <TrustBadge level={trust} sourceCount={exportable?.sources.length} />}
         <div className="rounded-2xl rounded-tl-sm border bg-card px-3.5 py-2.5 text-sm leading-relaxed">
           {children}
         </div>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { SendHorizonal, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -244,6 +244,8 @@ export function ChatThread({
           if (data.usage) setUsage(data.usage);
           appendNotice("limit", data.error);
         } else {
+          setMessages((prev) => prev.filter((m) => !m.id.startsWith("pending-")));
+          setDraft(question);
           appendNotice("error", data?.error ?? "");
         }
         return;
@@ -254,6 +256,7 @@ export function ChatThread({
       const decoder = new TextDecoder();
       let buffer = "";
       let createdConversationId: string | null = null;
+      let completed = false;
 
       const handleEvent = (event: StreamEvent) => {
         if (event.type === "meta") {
@@ -269,6 +272,7 @@ export function ChatThread({
         } else if (event.type === "progress") {
           setProgress(event.label);
         } else if (event.type === "done") {
+          completed = true;
           const a = event.assistantMessage;
           setMessages((prev) => [
             ...prev,
@@ -297,6 +301,10 @@ export function ChatThread({
           if (line) handleEvent(JSON.parse(line) as StreamEvent);
         }
       }
+
+      buffer += decoder.decode();
+      if (buffer.trim()) handleEvent(JSON.parse(buffer) as StreamEvent);
+      if (!completed) throw new Error("답변 수신이 중단되었습니다");
 
       // 새 대화는 답변을 다 받은 뒤 목록에 알린다 (먼저 알리면 화면이 다시 그려져 진행 중인 응답을 놓침)
       if (createdConversationId) {
@@ -403,14 +411,20 @@ export function ChatThread({
               </SelectContent>
             </Select>
           )}
-          <Input
+          <Textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleSend();
+              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                handleSend();
+              }
             }}
             placeholder={limitReached ? "오늘 사용할 수 있는 질문을 모두 사용했습니다" : placeholder}
-            className="h-11"
+            aria-label="비서에게 질문"
+            maxLength={1000}
+            rows={2}
+            className="min-h-11 max-h-40 resize-y"
             disabled={loading || limitReached}
           />
           <Button

@@ -44,7 +44,7 @@ export async function searchMinutes(query: string, opts: { terms?: number[]; lim
     terms.map((th) =>
       fetchText(
         `${BASE}/promote/minutes/search.do?cl_cd_sch=CT&th_sch=${th}&schwrd=${encodeURIComponent(keyword)}`
-      ).catch(() => "")
+      )
     )
   );
 
@@ -61,7 +61,7 @@ export async function searchMinutes(query: string, opts: { terms?: number[]; lim
   }
 
   const filtered = filters.length > 0 ? hits.filter((h) => filters.every((f) => h.title.includes(f))) : hits;
-  return (filtered.length > 0 ? filtered : hits).slice(0, limit);
+  return filtered.slice(0, limit);
 }
 
 /** 회의록 본문에서 검색어 주변 발언만 잘라 돌려준다 (본문 전체는 수십만 자라 모델에 넣기엔 큼) */
@@ -155,7 +155,7 @@ export async function searchMemberMinutes(
     terms.map((th) =>
       fetchText(
         `${BASE}/promote/minutes/member.do?th_sch=${th}&mem_sch=${code}&schwrd=${encodeURIComponent(keyword.trim())}`
-      ).catch(() => "")
+      )
     )
   );
 
