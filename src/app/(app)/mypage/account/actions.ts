@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { members, watchKeywords } from "@/db/schema";
+import { members, sessions, watchKeywords } from "@/db/schema";
+import { createSession } from "@/lib/auth";
 import { committeesFor } from "@/lib/committees";
 import { getActiveMember } from "@/lib/member";
 import { hashPassword, verifyPassword } from "@/lib/password";
@@ -38,7 +39,11 @@ export async function changePassword(current: string, next: string) {
     return { ok: false as const, error: "현재 비밀번호가 올바르지 않습니다" };
   }
 
-  await db.update(members).set({ passwordHash: await hashPassword(next) }).where(eq(members.id, member.id));
+  await db.batch([
+    db.update(members).set({ passwordHash: await hashPassword(next) }).where(eq(members.id, member.id)),
+    db.delete(sessions).where(eq(sessions.memberId, member.id)),
+  ]);
+  await createSession(member.id);
   return { ok: true as const };
 }
 

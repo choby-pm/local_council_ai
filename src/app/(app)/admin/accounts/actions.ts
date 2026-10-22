@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { and, eq, ne } from "drizzle-orm";
 
 import { getDb } from "@/db";
-import { members } from "@/db/schema";
+import { members, sessions } from "@/db/schema";
 import { getActiveMember } from "@/lib/member";
 import { hashPassword } from "@/lib/password";
 import { isUuid } from "@/lib/utils";
@@ -107,11 +107,15 @@ export async function resetPassword(targetId: string): Promise<{ ok: true; tempP
   const bytes = randomBytes(10);
   const tempPassword = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
 
-  const updated = await getDb()
-    .update(members)
-    .set({ passwordHash: await hashPassword(tempPassword) })
-    .where(eq(members.id, targetId))
-    .returning({ id: members.id });
+  const db = getDb();
+  const [updated] = await db.batch([
+    db
+      .update(members)
+      .set({ passwordHash: await hashPassword(tempPassword) })
+      .where(eq(members.id, targetId))
+      .returning({ id: members.id }),
+    db.delete(sessions).where(eq(sessions.memberId, targetId)),
+  ]);
   if (updated.length === 0) return { ok: false, error: "계정을 찾을 수 없습니다" };
 
   return { ok: true, tempPassword };
