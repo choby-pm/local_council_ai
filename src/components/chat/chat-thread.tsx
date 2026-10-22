@@ -105,7 +105,7 @@ function MessageView({
   if (message.kind === "unavailable") {
     return (
       <AssistantMessage trust="low" messageId={message.id}>
-        <AnswerUnavailable />
+        <AnswerUnavailable description={message.content} />
       </AssistantMessage>
     );
   }

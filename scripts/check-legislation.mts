@@ -1,0 +1,73 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { registerHooks } from "node:module";
+
+registerHooks({ resolve(specifier, context, nextResolve) {
+  if (specifier === "server-only") return { url: new URL("../node_modules/next/dist/compiled/server-only/empty.js", import.meta.url).href, shortCircuit: true };
+  return nextResolve(specifier, context);
+} });
+const { searchLegislation, readLegislation, LegislationError } = await import("../src/lib/legislation.ts");
+const fixture = (name: string) => JSON.parse(readFileSync(new URL(`./fixtures/legislation/${name}.json`, import.meta.url), "utf8"));
+const originalFetch = globalThis.fetch;
+const originalOc = process.env.LAW_API_OC;
+const requests: URL[] = [];
+let response: unknown = fixture("law-list");
+globalThis.fetch = async (input, init) => {
+  const url = new URL(String(input));
+  requests.push(url);
+  assert.equal(url.origin, "https://www.law.go.kr");
+  assert.equal(init?.redirect, "error");
+  assert.equal(init?.cache, "no-store");
+  return Response.json(response);
+};
+try {
+  delete process.env.LAW_API_OC;
+  await assert.rejects(searchLegislation("law", "지방자치법", "고양특례시의회"), (error) => error instanceof LegislationError && error.code === "unconfigured");
+  assert.equal(requests.length, 0);
+  process.env.LAW_API_OC = "private-test-value";
+  const laws = await searchLegislation("law", "지방자치법", "고양특례시의회");
+  assert.equal(laws.candidates[0].title, "지방자치법");
+  assert.equal(requests.at(-1)!.searchParams.get("nw"), "3");
+  assert.equal(laws.truncated, true);
+  const law = laws.candidates[0];
+  response = fixture("law-body");
+  const article = await readLegislation(law, { article: "제49조" });
+  assert.equal(requests.at(-1)!.searchParams.get("MST"), law.version);
+  assert.equal(requests.at(-1)!.searchParams.get("efYd"), law.effectiveDate);
+  assert.equal(requests.at(-1)!.searchParams.get("JO"), "004900");
+  assert.match(article.excerpts[0], /제49조/);
+  assert.match(article.excerpts[0], /①/);
+  assert.doesNotMatch(JSON.stringify(article), /private-test-value|OC=/);
+  assert.match(article.sourceUrl, /lsiSeq=285291/);
+  assert.equal((await readLegislation(law, { keyword: "존재하지않는검색어" })).excerpts.length, 0);
+  await assert.rejects(readLegislation({ ...law, effectiveDate: "20000101" }, { article: "제49조" }), /일치하지/);
+  await assert.rejects(readLegislation(law, {}), /조문/);
+  await assert.rejects(readLegislation(law, { article: "https://invalid.example" }), /조문/);
+  response = { LawSearch: { ...fixture("law-list").LawSearch, law: { ...fixture("law-list").LawSearch.law[0], 시행일자: "29990101" }, totalCnt: "1" } };
+  assert.equal((await searchLegislation("law", "지방자치법", "고양특례시의회")).candidates.length, 0);
+  response = fixture("ordinance-list");
+  const ordinances = await searchLegislation("ordinance", "교통", "고양특례시의회");
+  assert.equal(requests.at(-1)!.searchParams.get("sborg"), "3940000");
+  const ordinance = ordinances.candidates[0];
+  response = fixture("ordinance-body");
+  const localArticle = await readLegislation(ordinance, { article: "제1조" });
+  assert.match(localArticle.excerpts[0], /제1조/);
+  assert.match(localArticle.sourceUrl, /ordinSeq=1080916/);
+  response = fixture("ordinance-body");
+  (response as { LawService: { 자치법규기본정보: { 지자체기관명: string } } }).LawService.자치법규기본정보.지자체기관명 = "다른 지역";
+  await assert.rejects(readLegislation(ordinance, { article: "제1조" }), /일치하지/);
+  await assert.rejects(searchLegislation("ordinance", "교통", "다른시의회"), /고양시/);
+  response = { LawSearch: { resultCode: "20", totalCnt: "0" } };
+  await assert.rejects(searchLegislation("law", "법", "고양특례시의회"), /완료하지/);
+  globalThis.fetch = async () => new Response("<html>인증 오류</html>");
+  await assert.rejects(searchLegislation("law", "법", "고양특례시의회"), /조회하지 못했습니다/);
+  globalThis.fetch = async () => { throw new Error("https://www.law.go.kr/DRF?OC=private-test-value"); };
+  await assert.rejects(searchLegislation("law", "법", "고양특례시의회"), (error) => error instanceof Error && !error.message.includes("private-test-value"));
+  globalThis.fetch = async () => new Response("x".repeat(4 * 1024 * 1024 + 1));
+  await assert.rejects(searchLegislation("law", "법", "고양특례시의회"), /조회하지 못했습니다/);
+} finally {
+  globalThis.fetch = originalFetch;
+  if (originalOc === undefined) delete process.env.LAW_API_OC;
+  else process.env.LAW_API_OC = originalOc;
+}
+console.log("PASS: 공식 응답 fixture로 법령·조례 검색, 조문·버전·관할 검사, 인증 미설정·장애·크기 제한·인증값 비노출");

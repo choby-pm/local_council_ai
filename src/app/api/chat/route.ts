@@ -68,6 +68,7 @@ async function answerQuestion(
 
   // 인용한 근거가 없으면 답변으로 내보내지 않음 (근거 없는 답변 금지 원칙)
   if (result.sources.length === 0) {
+    if (result.lookupIssues.length > 0) return { kind: "unavailable", text: [...new Set(result.lookupIssues)].join("\n"), trust: null, sources: [] };
     return result.gathered === 0
       ? { kind: "empty", text: "관련 자료를 찾지 못했습니다. 질문을 바꾸거나 범위를 좁혀 다시 물어봐 주세요.", trust: null, sources: [] }
       : {
@@ -79,7 +80,8 @@ async function answerQuestion(
   }
 
   const trust: TrustLevel = result.sources.length >= 2 ? "high" : "medium";
-  return { kind: "normal", text: result.text, trust, sources: result.sources };
+  const lookupNotice = result.lookupIssues.length > 0 ? `\n\n조회하지 못한 자료: ${[...new Set(result.lookupIssues)].join(" ")}` : "";
+  return { kind: "normal", text: result.text + lookupNotice, trust, sources: result.sources };
 }
 
 export async function POST(req: NextRequest) {

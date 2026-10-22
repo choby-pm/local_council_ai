@@ -9,6 +9,7 @@ import { auditFindings, documentChunks, documents } from "@/db/schema";
 import { chatModel, embedQuery } from "@/lib/ai";
 import { readMinutesExcerpts, searchMemberMinutes, searchMinutes } from "@/lib/goyang-council";
 import type { Member } from "@/lib/member";
+import { LegislationError, searchLegislation, readLegislation, type LegislationCandidate } from "@/lib/legislation";
 
 export type DocType = "law" | "ordinance" | "meeting" | "budget";
 
@@ -27,6 +28,7 @@ export type AgentResult = {
   sources: AgentSource[];
   // 도구 호출 결과로 모은 전체 출처 수 (인용 여부와 무관)
   gathered: number;
+  lookupIssues: string[];
 };
 
 // 무료 티어는 모델당 하루 요청 수가 적어(결정 D-20) 한 질문의 단계 수를 작게 묶는다
@@ -52,7 +54,8 @@ function systemPrompt(member: Member) {
     "어려운 용어는 쉽게 풀어 설명하고, 의원이 다음에 무엇을 하면 되는지 짚어 주세요.\n\n" +
     `[담당 의원]\n${profile}\n\n` +
     "[원칙]\n" +
-    "- 답하기 전에 도구로 근거를 찾으세요. 행정사무감사·지적사항 질문은 getAuditFindings, 회의 내용은 searchMinutes → readMinutes, 의원 본인의 과거 발언·질의는 searchMyMinutes → readMinutes, 법령·조례는 searchDocuments를 쓰세요.\n" +
+    "- 답하기 전에 도구로 근거를 찾으세요. 행정사무감사·지적사항 질문은 getAuditFindings, 회의 내용은 searchMinutes → readMinutes, 의원 본인의 과거 발언·질의는 searchMyMinutes → readMinutes, 법령·조례는 searchLegislation → readLegislation을 쓰세요.\n" +
+    "- 법령·조례 검색 목록만으로 답하지 말고 readLegislation으로 조문을 읽어 ref를 확보하세요. 공식 조회가 미설정·실패하면 그 사실을 알리고 적재 문서나 기억으로 최신 법령을 대신 답하지 마세요. 과거 시점 적용·부칙 전체·별표 확인은 현재 미지원임을 명시하세요.\n" +
     "- 지적사항이나 사업을 다룰 때는 searchMyMinutes로 의원 본인이 전에 같은 주제를 질의했는지도 확인해, 있으면 '의원님이 ○○년에 질의하셨습니다'처럼 이어서 짚어 주세요.\n" +
     "- 도구 결과에 있는 내용만 근거로 쓰고, 문장 끝에 도구 결과의 ref 번호를 [1], [2] 형식으로 표기하세요.\n" +
     "- 숫자·날짜·이름을 지어내지 마세요. 찾지 못했으면 찾지 못했다고 말하고, 확인 방법(자료요구 등)을 제안하세요.\n" +
@@ -86,6 +89,14 @@ export async function runCouncilAgent(opts: {
 }): Promise<AgentResult> {
   const { member, docTypes } = opts;
   const gathered: AgentSource[] = [];
+  const candidates = new Map<string, LegislationCandidate>();
+  const lookupIssues: string[] = [];
+
+  function legislationFailure(error: unknown) {
+    const message = error instanceof LegislationError ? error.message : "법제처 응답을 확인하지 못해 법령 근거를 확보하지 못했습니다.";
+    lookupIssues.push(message);
+    return { status: error instanceof LegislationError ? error.code : "unavailable", message };
+  }
 
   function addSource(s: Omit<AgentSource, "index">) {
     const index = gathered.length + 1;
@@ -94,13 +105,47 @@ export async function runCouncilAgent(opts: {
   }
 
   const tools = {
+    searchLegislation: tool({
+      description: "법제처 공식 API에서 현재 시행 중인 법령 또는 고양시 자치법규를 검색합니다. 검색 결과는 근거가 아니며 candidateId로 readLegislation을 이어서 호출해야 합니다.",
+      inputSchema: z.object({ kind: z.enum(["law", "ordinance"]), query: z.string().trim().min(1).max(100), searchIn: z.enum(["title", "body"]).default("title") }),
+      execute: async ({ kind, query, searchIn }) => {
+        if (!docTypes.includes(kind)) return { status: "unsupported", message: "이 화면에서 지원하지 않는 법규 종류입니다." };
+        opts.onProgress?.("법제처 공식 법령·조례 검색 중");
+        try {
+          const result = await searchLegislation(kind, query, member.council, searchIn);
+          return { ...result, candidates: result.candidates.map((candidate) => {
+            const candidateId = `legislation-${candidates.size + 1}`;
+            candidates.set(candidateId, candidate);
+            return { candidateId, title: candidate.title, effectiveDate: candidate.effectiveDate, agency: candidate.agency };
+          }) };
+        } catch (error) { return legislationFailure(error); }
+      },
+    }),
+    readLegislation: tool({
+      description: "이번 질문에서 검색한 candidateId의 공식 본문을 읽습니다. keyword 또는 article(예: 제49조, 제10조의2)을 지정하세요. 원문을 읽고 확인한 발췌에만 ref를 발급합니다.",
+      inputSchema: z.object({ candidateId: z.string(), keyword: z.string().trim().min(1).max(100).optional(), article: z.string().regex(/^제?\d{1,4}조(?:의\d{1,2})?$/).optional() }),
+      execute: async ({ candidateId, keyword, article }) => {
+        const candidate = candidates.get(candidateId);
+        if (!candidate) return { status: "unsupported", message: "이번 질문의 공식 검색 결과에서 선택해주세요." };
+        opts.onProgress?.("법제처 조문 원문 확인 중");
+        try {
+          const result = await readLegislation(candidate, { keyword, article });
+          return { ...result, excerpts: result.excerpts.map((excerpt) => ({
+            ref: addSource({ documentId: "", sourceUrl: result.sourceUrl, title: result.title,
+              meta: `${result.agency} · 시행 ${result.effectiveDate} · 공식 조회 ${result.checkedAt}`, excerpt }), excerpt,
+          })) };
+        } catch (error) { return legislationFailure(error); }
+      },
+    }),
     searchDocuments: tool({
-      description: "서비스에 적재된 법령·조례·회의록·예산 문서를 의미 검색합니다. 법령·조례 조문이나 문서 내용을 찾을 때 사용합니다.",
+      description: "서비스에 적재된 회의록·예산 보조 문서를 검색합니다. 법령·조례의 현재 적용 근거로 사용하지 마세요. 법규는 공식 조회 도구를 사용하세요.",
       inputSchema: z.object({
         query: z.string().describe("찾을 내용 (자연어)"),
       }),
       execute: async ({ query }) => {
-        opts.onProgress?.("법령·조례 문서 찾는 중");
+        const archivedTypes = docTypes.filter((type) => type !== "law" && type !== "ordinance");
+        if (archivedTypes.length === 0) return [];
+        opts.onProgress?.("적재된 보조 문서 찾는 중");
         const embedding = await embedQuery(query);
         const distance = cosineDistance(documentChunks.embedding, embedding);
         const rows = await getDb()
@@ -114,7 +159,7 @@ export async function runCouncilAgent(opts: {
           })
           .from(documentChunks)
           .innerJoin(documents, eq(documents.id, documentChunks.documentId))
-          .where(and(inArray(documents.type, docTypes), or(isNull(documents.council), eq(documents.council, member.council))))
+          .where(and(inArray(documents.type, archivedTypes), or(isNull(documents.council), eq(documents.council, member.council))))
           .orderBy(distance)
           .limit(4);
 
@@ -278,5 +323,6 @@ export async function runCouncilAgent(opts: {
     text: text.trim(),
     sources: sourcesForAnswer(text, gathered),
     gathered: gathered.length,
+    lookupIssues,
   };
 }

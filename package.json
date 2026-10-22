@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:chat": "node --import tsx scripts/check-chat-regressions.mts",
-    "test:demo": "node --import tsx scripts/check-demo.mts"
+    "test:demo": "node --import tsx scripts/check-demo.mts",
+    "test:legislation": "node --import tsx scripts/check-legislation.mts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.71",
