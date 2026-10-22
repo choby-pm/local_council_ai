@@ -21,6 +21,12 @@ function decode(s: string) {
     .replace(/&#39;/g, "'");
 }
 
+function plainText(html: string) {
+  return decode(html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>|<\/(?:p|div)>/gi, "\n").replace(/<[^>]+>/g, " "))
+    .replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
+}
+
 async function fetchText(url: string) {
   const res = await fetch(url, {
     headers: { "User-Agent": UA },
@@ -65,41 +71,50 @@ export async function searchMinutes(query: string, opts: { terms?: number[]; lim
 }
 
 /** 회의록 본문에서 검색어 주변 발언만 잘라 돌려준다 (본문 전체는 수십만 자라 모델에 넣기엔 큼) */
-export async function readMinutesExcerpts(uid: string, keyword: string, opts: { window?: number; max?: number } = {}) {
+export async function readMinutesExcerpts(uid: string, keyword: string, opts: { window?: number; max?: number; speaker?: string } = {}) {
   if (!/^\d+$/.test(uid)) throw new Error("잘못된 회의록 번호");
   const window = opts.window ?? 600;
   const max = opts.max ?? 4;
 
-  const { title, url, text } = await getMinutesText(uid);
-  const words = keyword.trim().split(/\s+/).filter(Boolean);
+  const { title, url, text, speeches, date, temporary } = await getMinutesText(uid);
+  const words = keyword.trim().split(/\s+/).filter((word) => word && word !== opts.speaker);
   const excerpts: string[] = [];
-  let from = 0;
-  while (excerpts.length < max && words.length > 0) {
-    const positions = words.map((w) => text.indexOf(w, from)).filter((i) => i >= 0);
-    if (positions.length === 0) break;
-    const at = Math.min(...positions);
-    excerpts.push(text.slice(Math.max(0, at - window / 2), at + window).trim());
-    from = at + window;
+  const blocks = speeches.length > 0 ? speeches : opts.speaker ? [] : [{ speaker: "", name: "", text }];
+  for (const block of blocks) {
+    if (opts.speaker && block.name !== opts.speaker) continue;
+    let from = 0;
+    while (excerpts.length < max) {
+      const positions = words.map((word) => block.text.indexOf(word, from)).filter((at) => at >= 0);
+      const at = words.length === 0 && opts.speaker && from === 0 ? 0 : positions.length > 0 ? Math.min(...positions) : -1;
+      if (at < 0) break;
+      const excerpt = block.text.slice(Math.max(0, at - window / 2), at + window).trim();
+      excerpts.push(block.speaker ? `[${block.speaker}] ${excerpt}` : excerpt);
+      from = at + window;
+    }
+    if (excerpts.length >= max) break;
   }
 
-  return { uid, title, url, excerpts };
+  return { uid, title, url, excerpts, date, temporary, speakerVerified: speeches.length > 0, speaker: opts.speaker ?? null };
 }
 
 /** 회의록 한 건의 본문 전체(텍스트). 발언 전문이라 수십만 자일 수 있다 */
 export async function getMinutesText(uid: string) {
   if (!/^\d+$/.test(uid)) throw new Error("잘못된 회의록 번호");
-  const html = await fetchText(`${BASE}/viewer/minutes.do?uid=${uid}`);
-  const text = decode(
-    html
-      .replace(/<script[\s\S]*?<\/script>/g, "")
-      .replace(/<style[\s\S]*?<\/style>/g, "")
-      .replace(/<br\s*\/?>/g, "\n")
-      .replace(/<[^>]+>/g, " ")
-  )
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n\s*\n+/g, "\n");
+  const html = (await fetchText(`${BASE}/viewer/minutes.do?uid=${uid}`))
+    .replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "");
+  const text = plainText(html);
   const title = decode(html.match(/<title>([^<]*)<\/title>/)?.[1]?.trim() ?? `회의록 ${uid}`);
-  return { uid, title, url: `${BASE}/viewer/minutes.do?uid=${uid}`, text };
+  // shortcut: 현재 사이트의 평면 발언 블록 기준이며, 중첩 div가 도입되면 HTML 파서로 교체한다.
+  const speeches = [...html.matchAll(/<div\b[^>]*class=['"][^'"]*\bspeaker-block\b[^'"]*['"][^>]*>([\s\S]*?)<\/div>/gi)].flatMap((match) => {
+    const heading = match[1].match(/^\s*<strong[^>]*>([\s\S]*?)<\/strong>/i);
+    if (!heading) return [];
+    const speaker = plainText(heading[1]).replace(/^○\s*/, "");
+    const name = speaker.split(/\s+/).at(-1) ?? "";
+    return [{ speaker, name, text: plainText(match[1].slice(heading[0].length)) }];
+  });
+  const date = plainText(html.match(/<p[^>]*id=['"]date-line['"][^>]*>([\s\S]*?)<\/p>/i)?.[1] ?? "");
+  const temporary = /id=['"]temporary-minutes-sub-title-line['"]/.test(html);
+  return { uid, title, url: `${BASE}/viewer/minutes.do?uid=${uid}`, text, speeches, date, temporary };
 }
 
 /** 최근 공개된 회의록 목록 (최근회의록 메뉴, 최신순, 페이지당 10건) */

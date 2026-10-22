@@ -30,6 +30,20 @@ try {
   const minutes = await readMinutesExcerpts("42", "버스");
   assert.match(minutes.excerpts.join(" "), /버스 운행 실적/);
   assert.doesNotMatch(minutes.excerpts.join(" "), /거짓근거/);
+  globalThis.fetch = async () => new Response(`<title>발언자 구분 테스트</title><p id='date-line'>2026년 10월 14일</p><p id='temporary-minutes-sub-title-line'>임시회의록</p>
+    <div class='contents-block speaker-block'><strong>○과장 다른사람</strong>테스트의원님, 버스 운영에 답변드립니다.</div>
+    <div class='contents-block speaker-block member-speech'><strong>○위원 <a>테스트의원</a></strong>버스 운행 자료를 요청합니다.</div>
+    <div class='contents-block speaker-block member-speech'><strong>○위원 또다른의원</strong>버스 예산에 대해 질문합니다.</div>
+    <script><div class='speaker-block'><strong>○위원 테스트의원</strong>버스 가짜발언</div></script>`);
+  const own = await readMinutesExcerpts("42", "버스", { speaker: "테스트의원" });
+  assert.equal(own.speakerVerified, true);
+  assert.equal(own.temporary, true);
+  assert.match(own.date, /2026년/);
+  assert.match(own.excerpts.join(" "), /버스 운행 자료/);
+  assert.doesNotMatch(own.excerpts.join(" "), /답변드립니다|예산|가짜발언/);
+  assert.equal((await readMinutesExcerpts("42", "버스", { speaker: "없는의원" })).excerpts.length, 0);
+  globalThis.fetch = async () => new Response("<p>참석자: 테스트의원</p><p>버스 관련 내용</p>");
+  assert.equal((await readMinutesExcerpts("42", "버스", { speaker: "테스트의원" })).excerpts.length, 0, "구조를 확인하지 못하면 참석·언급만으로 발언을 반환하지 않음");
   await assert.rejects(readMinutesExcerpts("https://invalid.example", "버스"), /잘못된/);
 } finally {
   globalThis.fetch = originalFetch;
